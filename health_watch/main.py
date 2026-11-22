@@ -96,6 +96,9 @@ def main() -> None:
             last_button = False
             last_sos = False
             acknowledge_press = False
+            remote_alert_until = float("-inf")
+            last_command_id = None
+            last_reported_output = None
             print("Da nhan MPU6050 va MAX30102. Nhan Ctrl+C de dung.")
 
             while True:
@@ -113,6 +116,15 @@ def main() -> None:
                     screen.status("LOI DOC I2C", str(exc)[:28])
                     raise SystemExit(f"Loi doc I2C: {exc}") from exc
 
+                if publisher:
+                    for command in publisher.pop_commands():
+                        last_command_id = command["command_id"]
+                        if command["active"]:
+                            remote_alert_until = started + command["duration_s"]
+                        else:
+                            remote_alert_until = float("-inf")
+                remote_alert_active = started < remote_alert_until
+
                 button = alerts.button_pressed
                 fall_acknowledged = False
                 if fall.confirmed and button and not last_button and not just_fell:
@@ -123,16 +135,43 @@ def main() -> None:
                 if not button:
                     acknowledge_press = False
                 sos_pressed = button and not acknowledge_press and not fall.confirmed
-                alerts.update(fall_active=fall.confirmed, sos_active=sos_pressed)
-                alert_state = "fall" if fall.confirmed else ("sos" if sos_pressed else "")
+                alerts.update(
+                    fall_active=fall.confirmed,
+                    sos_active=sos_pressed or remote_alert_active,
+                )
+                alert_state = (
+                    "fall" if fall.confirmed else
+                    ("sos" if sos_pressed else ("remote" if remote_alert_active else ""))
+                )
+                output_source = (
+                    "remote" if remote_alert_active else
+                    ("sos" if sos_pressed else ("fall" if fall.confirmed else "normal"))
+                )
+                output_state = (
+                    sos_pressed or remote_alert_active,
+                    fall.confirmed or sos_pressed or remote_alert_active,
+                    output_source,
+                )
                 if alert_state != last_alert:
                     print({"fall": "PHAT HIEN NGA: LED do bat, coi tat.",
                            "sos": "SOS: LED do va coi bat.",
+                           "remote": "CANH BAO TU XA: LED do va coi bat.",
                            "": "Trang thai binh thuong."}[alert_state])
                     last_alert = alert_state
                     last_screen = float("-inf")
 
                 if publisher and messages:
+                    if output_state != last_reported_output:
+                        publisher.publish_alert_state(
+                            messages.alert_state(
+                                buzzer_active=output_state[0],
+                                red_led_active=output_state[1],
+                                source=output_source,
+                                last_command_id=last_command_id,
+                                remote_remaining_s=max(0, remote_alert_until - started),
+                            )
+                        )
+                        last_reported_output = output_state
                     if just_fell:
                         publisher.publish_event(messages.event("fall_detected"))
                     if fall_acknowledged:

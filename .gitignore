@@ -1,28 +1,126 @@
-# Python
-**/__pycache__/
-**/*.py[cod]
-**/.venv/
-.pytest_cache/
+# -----------------------------------------------------------------------------
+# Health Watch - files that must stay local
+# Keep source code, lock files, Gradle wrapper files and every .env*.example.
+# -----------------------------------------------------------------------------
 
-# JavaScript / Android
-**/node_modules/
-**/dist/
-**/build/
-**/.gradle/
-**/*.apk
-**/*.aab
-
-# Local configuration and data
+# Secrets and machine-specific configuration
 **/.env
 **/.env.*
 !**/.env.example
-**/*.log
+!**/.env.*.example
+**/local.properties
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+service-account*.json
+credentials*.json
+
+# Python environments, bytecode and tooling
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.venv/
+**/venv/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.hypothesis/
+**/.tox/
+**/.nox/
+**/.coverage
+**/.coverage.*
+**/coverage.xml
+**/htmlcov/
+**/*.egg-info/
+**/.eggs/
+**/pip-wheel-metadata/
+
+# Node.js / Vue / Vite
+**/node_modules/
+**/.npm/
+**/.pnpm-store/
+**/.yarn/cache/
+**/.yarn/unplugged/
+**/.vite/
+**/.parcel-cache/
+**/.eslintcache
+**/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Compiled and packaged output
+**/dist/
+**/build/
+**/out/
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+
+# Android / Gradle / Android Studio
+**/.gradle/
+**/.cxx/
+**/.externalNativeBuild/
+**/captures/
+**/.navigation/
+**/*.iml
+**/*.hprof
+
+# Capacitor-generated Android content. Keep web/android source and Gradle wrapper.
+/web/android/capacitor-cordova-android-plugins/
+/web/android/app/src/main/assets/public/
+/web/android/app/src/main/assets/capacitor.config.json
+/web/android/app/src/main/assets/capacitor.plugins.json
+/web/android/app/src/main/res/xml/config.xml
+
+# Local SDKs and developer tools
+/.tools/
+/.codex/
+/.agents/
+
+# Runtime data, local databases and Raspberry Pi deployment backups
 **/*.sqlite
 **/*.sqlite3
-infra/local/data/
+**/*.db
+/infra/local/data/
+/infra/local/postgres_data/
+/infra/local/mosquitto/data/
+/infra/local/mosquitto/log/
+/infra/local/mosquitto/passwd
+/health_watch/backups/
+**/source-*.tar.gz
 
-# IDE / OS
-.idea/
-.vscode/
+# Logs, temporary files and editor swap/backup files
+**/*.log
+**/*.tmp
+**/*.temp
+**/*.bak
+**/*.swp
+**/*.swo
+**/*~
+**/.cache/
+
+# IDE settings
+**/.idea/
+**/.vscode/
+**/.fleet/
+**/.history/
+
+# Operating-system metadata
 .DS_Store
+._*
 Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/
+.Spotlight-V100
+.Trashes

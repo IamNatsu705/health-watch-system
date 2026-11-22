@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api } from './api'
+import { api, getApiBase, isNativeApp, setApiBase } from './api'
 
 const devices = ref([])
 const selectedId = ref('')
@@ -10,6 +10,19 @@ const events = ref([])
 const error = ref('')
 const loading = ref(true)
 const updatedAt = ref(null)
+const apiAddress = ref(getApiBase())
+const apiSaved = ref(false)
+const commandSending = ref(false)
+const commandMessage = ref('')
+const commandError = ref(false)
+const remoteAlert = ref({
+  known: false,
+  buzzer_active: false,
+  red_led_active: false,
+  source: 'unknown',
+  pending: false,
+  pending_active: null,
+})
 let timer
 
 const eventLabels = {
@@ -43,6 +56,31 @@ const isFresh = computed(() => {
   if (!device.value?.online || !current.value) return false
   return Date.now() - new Date(current.value.received_at).getTime() < 10000
 })
+const alertToggleOn = computed(() => (
+  remoteAlert.value.pending
+    ? remoteAlert.value.pending_active === true
+    : remoteAlert.value.buzzer_active
+))
+const canToggleAlert = computed(() => (
+  isFresh.value && remoteAlert.value.known &&
+  (!remoteAlert.value.pending || remoteAlert.value.pending_active === true)
+))
+const alertStateLabel = computed(() => {
+  if (!isFresh.value) return 'Không xác định — thiết bị đang offline'
+  if (remoteAlert.value.pending) {
+    return remoteAlert.value.pending_active
+      ? 'Đang chờ Pi xác nhận bật còi…'
+      : 'Đang chờ Pi xác nhận tắt còi…'
+  }
+  if (!remoteAlert.value.known) return 'Chưa nhận trạng thái còi từ Pi'
+  if (!remoteAlert.value.buzzer_active) return 'Còi đang tắt'
+  const sources = {
+    remote: 'Còi đang bật — điều khiển từ xa',
+    sos: 'Còi đang bật — nút SOS trên thiết bị',
+    fall: 'Còi đang bật — cảnh báo ngã',
+  }
+  return sources[remoteAlert.value.source] || 'Còi đang bật'
+})
 const heartPoints = computed(() => {
   const valid = history.value.filter(item => item.heart_rate_bpm !== null)
   if (valid.length < 2) return ''
@@ -61,6 +99,7 @@ async function refresh() {
       latest.value = null
       history.value = []
       events.value = []
+      remoteAlert.value = { known: false, buzzer_active: false, pending: false }
       error.value = ''
       return
     }
@@ -68,6 +107,7 @@ async function refresh() {
       api.latest(selectedId.value), api.history(selectedId.value), api.events(selectedId.value),
     ])
     latest.value = last
+    remoteAlert.value = last.remote_alert || { known: false, buzzer_active: false, pending: false }
     history.value = samples
     events.value = recentEvents
     updatedAt.value = new Date()
@@ -81,8 +121,45 @@ async function refresh() {
 
 function selectDevice(event) {
   selectedId.value = event.target.value
+  commandMessage.value = ''
+  remoteAlert.value = { known: false, buzzer_active: false, pending: false }
   logActivity('device_select', selectedId.value)
   refresh()
+}
+
+function saveApiAddress() {
+  setApiBase(apiAddress.value)
+  apiAddress.value = getApiBase()
+  apiSaved.value = true
+  selectedId.value = ''
+  loading.value = true
+  refresh()
+  setTimeout(() => { apiSaved.value = false }, 2000)
+}
+
+async function sendRemoteAlert(active) {
+  if (!selectedId.value || commandSending.value) return
+  commandSending.value = true
+  commandMessage.value = ''
+  commandError.value = false
+  try {
+    const response = await api.remoteAlert(selectedId.value, active, 10)
+    remoteAlert.value = response.state
+    commandMessage.value = active
+      ? 'Đã gửi lệnh bật; đang chờ Pi xác nhận.'
+      : 'Đã gửi lệnh tắt; đang chờ Pi xác nhận.'
+    logActivity(active ? 'remote_alert_start' : 'remote_alert_stop', selectedId.value)
+  } catch (exc) {
+    commandError.value = true
+    commandMessage.value = exc.message || 'Không gửi được lệnh tới thiết bị.'
+  } finally {
+    commandSending.value = false
+  }
+}
+
+function toggleRemoteAlert() {
+  if (!canToggleAlert.value || commandSending.value) return
+  sendRemoteAlert(!alertToggleOn.value)
 }
 
 onMounted(() => {
@@ -105,7 +182,7 @@ onUnmounted(() => clearInterval(timer))
         <div>
           <p class="eyebrow">TỔNG QUAN THIẾT BỊ</p>
           <h1>Sức khỏe trong tầm mắt.</h1>
-          <p class="intro-copy">Dữ liệu mô phỏng đi qua MQTT, PostgreSQL và API. Chưa kết nối cảm biến Pi thật.</p>
+          <p class="intro-copy">Dữ liệu từ mock hoặc Raspberry Pi đi qua MQTT, PostgreSQL và API.</p>
         </div>
         <div class="device-picker">
           <label for="device">THIẾT BỊ</label>
@@ -117,9 +194,49 @@ onUnmounted(() => clearInterval(timer))
         </div>
       </section>
 
+      <section v-if="isNativeApp" class="native-settings">
+        <div><p class="eyebrow">KẾT NỐI ANDROID</p><strong>API trên máy tính</strong></div>
+        <div class="api-address-row">
+          <input v-model="apiAddress" type="url" inputmode="url" placeholder="http://192.168.1.10:8000" aria-label="Địa chỉ API" />
+          <button type="button" @click="saveApiAddress">{{ apiSaved ? 'Đã lưu' : 'Lưu' }}</button>
+        </div>
+        <small>Dùng IP LAN của máy tính, không dùng localhost trên điện thoại.</small>
+      </section>
+
       <div v-if="error" class="notice error">Không tải được dữ liệu: {{ error }}</div>
       <div v-else-if="loading" class="notice">Đang kết nối hệ thống local…</div>
-      <div v-else-if="!selectedId" class="notice">Đang chờ mock publisher gửi dữ liệu lên MQTT…</div>
+      <div v-else-if="!selectedId" class="notice">Đang chờ thiết bị gửi dữ liệu lên MQTT…</div>
+
+      <section class="remote-alert-panel">
+        <div class="remote-alert-copy">
+          <p class="eyebrow">ĐIỀU KHIỂN TỪ XA</p>
+          <h2>Còi và đèn cảnh báo</h2>
+          <p>Bật LED đỏ và còi trong 10 giây. Thiết bị tự tắt nếu không nhận thêm lệnh.</p>
+        </div>
+        <div class="remote-alert-actions">
+          <div class="alert-control-row">
+            <div
+              class="alert-state-badge"
+              :class="{ active: remoteAlert.buzzer_active, pending: remoteAlert.pending }"
+            ><i></i>{{ alertStateLabel }}</div>
+            <button
+              type="button"
+              role="switch"
+              class="alert-toggle"
+              :class="{ on: alertToggleOn, pending: remoteAlert.pending }"
+              :aria-checked="alertToggleOn"
+              :aria-label="alertToggleOn ? 'Tắt còi cảnh báo' : 'Bật còi cảnh báo'"
+              :disabled="!canToggleAlert || commandSending"
+              @click="toggleRemoteAlert"
+            >
+              <span class="alert-toggle-track"><span class="alert-toggle-thumb"></span></span>
+              <span class="alert-toggle-label">{{ alertToggleOn ? 'ON' : 'OFF' }}</span>
+            </button>
+          </div>
+          <small v-if="commandMessage" :class="{ 'command-error': commandError }">{{ commandMessage }}</small>
+          <small v-else>Trạng thái trên đây do chính Raspberry Pi xác nhận qua MQTT.</small>
+        </div>
+      </section>
 
       <section class="metrics-grid">
         <article class="metric-card heart-card">
@@ -132,16 +249,16 @@ onUnmounted(() => clearInterval(timer))
           </svg>
         </article>
 
-        <article class="metric-card"><div class="card-heading"><span class="metric-icon step-icon">↗</span><span>BƯỚC CHÂN</span></div><div class="metric-value"><strong>{{ current?.steps_session ?? '--' }}</strong><span>bước / phiên</span></div><p>Tính từ lần khởi động mock hiện tại</p></article>
+        <article class="metric-card"><div class="card-heading"><span class="metric-icon step-icon">↗</span><span>BƯỚC CHÂN</span></div><div class="metric-value"><strong>{{ current?.steps_session ?? '--' }}</strong><span>bước / phiên</span></div><p>Tính từ lần khởi động thiết bị hiện tại</p></article>
         <article class="metric-card"><div class="card-heading"><span class="metric-icon distance-icon">⌁</span><span>QUÃNG ĐƯỜNG</span></div><div class="metric-value"><strong>{{ current ? (current.distance_m_session / 1000).toFixed(3) : '--' }}</strong><span>km ~</span></div><p>Ước tính từ số bước</p></article>
         <article class="metric-card"><div class="card-heading"><span class="metric-icon calorie-icon">✦</span><span>NĂNG LƯỢNG</span></div><div class="metric-value"><strong>{{ current ? current.calories_kcal_session.toFixed(2) : '--' }}</strong><span>kcal ~</span></div><p>Giá trị minh họa, chưa hiệu chuẩn</p></article>
       </section>
 
       <section class="lower-grid">
         <article class="panel"><div class="panel-title"><div><p class="eyebrow">THIẾT BỊ</p><h2>Trạng thái kết nối</h2></div><span class="panel-dot" :class="isFresh ? 'online' : 'offline'"></span></div><div class="status-row"><span>Dữ liệu cuối</span><strong>{{ timeLabel(current?.measured_at) }}</strong></div><div class="status-row"><span>Server nhận lúc</span><strong>{{ timeLabel(current?.received_at) }}</strong></div><div class="status-row"><span>Phiên khởi động</span><code>{{ current?.boot_id?.slice(0, 8) || '—' }}</code></div></article>
-        <article class="panel"><div class="panel-title"><div><p class="eyebrow">NHẬT KÝ</p><h2>Sự kiện gần đây</h2></div><span class="event-count">{{ events.length }}</span></div><p v-if="!events.length" class="empty-state">Chưa có sự kiện. Mock sẽ gửi thử ngã và SOS định kỳ.</p><ul v-else class="event-list"><li v-for="item in events" :key="item.event_id"><span class="event-bullet"></span><span>{{ eventLabels[item.event_type] || item.event_type }}</span><time>{{ timeLabel(item.occurred_at) }}</time></li></ul></article>
+        <article class="panel"><div class="panel-title"><div><p class="eyebrow">NHẬT KÝ</p><h2>Sự kiện gần đây</h2></div><span class="event-count">{{ events.length }}</span></div><p v-if="!events.length" class="empty-state">Chưa có sự kiện ngã hoặc SOS từ thiết bị.</p><ul v-else class="event-list"><li v-for="item in events" :key="item.event_id"><span class="event-bullet"></span><span>{{ eventLabels[item.event_type] || item.event_type }}</span><time>{{ timeLabel(item.occurred_at) }}</time></li></ul></article>
       </section>
-      <p class="footnote">Bản local sử dụng dữ liệu mock. BPM, bước và calo chỉ phục vụ thử luồng hệ thống.</p>
+      <p class="footnote">BPM, bước và calo hiện chỉ phục vụ thử luồng hệ thống, chưa phải dữ liệu y tế.</p>
     </main>
   </div>
 </template>

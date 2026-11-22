@@ -46,6 +46,21 @@ class DeviceMessageFactoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             factory.event("unknown")
 
+    def test_alert_state_reports_real_outputs_and_expiry(self):
+        factory = DeviceMessageFactory("pi-watch-test")
+        command_id = "3e4a9a2e-639a-456d-8cce-aad4137ba544"
+        payload = factory.alert_state(
+            buzzer_active=True,
+            red_led_active=True,
+            source="remote",
+            last_command_id=command_id,
+            remote_remaining_s=10,
+        )
+        self.assertTrue(payload["buzzer_active"])
+        self.assertEqual(payload["source"], "remote")
+        self.assertEqual(payload["last_command_id"], command_id)
+        self.assertIsNotNone(payload["expires_at"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,14 @@
+{
+  "appId": "com.iamnatsu.healthwatch",
+  "appName": "Health Watch",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

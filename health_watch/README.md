@@ -1,10 +1,26 @@
-# Health Watch - thử phần cứng trên Raspberry Pi
+# Health Watch - edge runtime trên Raspberry Pi
 
 Thư mục này dùng riêng cho bài cuối kỳ. `main.py` đọc GY-521/MPU6050 và
 MAX30102 qua I2C, đếm bước thử nghiệm, ước tính quãng đường/calo, rồi hiện
 thông tin lên TFT ST7789V3 240x280 qua SPI. MPU6050 cũng được dùng để thử
 phát hiện ngã. Một worker nền gửi telemetry và sự kiện qua MQTT; mất mạng
-không chặn vòng lặp cảm biến, màn hình, LED hoặc còi.
+không chặn vòng lặp cảm biến, màn hình, LED hoặc còi. Pi cũng nhận lệnh
+cảnh báo từ web/app và trả trạng thái phần cứng thật qua MQTT.
+
+## Thành phần trong thư mục
+
+| Đường dẫn | Vai trò |
+| --- | --- |
+| `main.py` | Vòng lặp cảm biến, màn hình, cảnh báo và tích hợp MQTT |
+| `config.py` | Chân GPIO, ngưỡng và cấu hình thuật toán |
+| `sensors/` | Driver MPU6050/MAX30102 |
+| `processing/` | Bước chân, BPM thử nghiệm và phát hiện ngã |
+| `telemetry.py` | Tạo payload đúng hợp đồng MQTT |
+| `mqtt_publisher.py` | Kết nối nền, outbox, nhận command và publish state |
+| `check_*.py` | Kiểm tra I2C, GPIO/cảnh báo và MQTT |
+| `tests/` | Unit test không cần phần cứng thật |
+| `deploy/pi/` | Script setup và cài systemd |
+| `run.sh` | Nạp `.env` rồi chạy chương trình |
 
 ## Mạch đang dùng
 
@@ -29,19 +45,32 @@ các GPIO22/GPIO27/GPIO17.
 
 ## Chép từ Windows bằng PowerShell
 
-Chạy trên **máy Windows**, từ thư mục dự án lớn `health_watch_system/`, không chạy trong phiên SSH. Chỉ chép mã nguồn Pi đang có; không chép cả dự án hoặc `.venv` của bản copy:
+Lệnh cũ `scp -r pi@pi.local:/home/pi/projects/health_watch ...` có chiều **Pi → Windows**. Khi đưa code mới lên thiết bị, đảo chiều: nguồn trên Windows đứng trước, đích `pi@...:` đứng sau.
+
+Chạy trên **PowerShell của Windows**, từ thư mục dự án lớn `health_watch_system/`, không chạy trong terminal SSH. Cách khuyên dùng:
 
 ```powershell
 Set-Location 'C:\Project\health_watch_system'
-scp .\health_watch\main.py .\health_watch\config.py .\health_watch\alerts.py .\health_watch\screen.py .\health_watch\telemetry.py .\health_watch\mqtt_publisher.py .\health_watch\requirements.txt .\health_watch\.env.example pi@pi:/home/pi/projects/health_watch/
-scp .\health_watch\check_i2c.py .\health_watch\check_alerts.py pi@pi:/home/pi/projects/health_watch/
-scp -r .\health_watch\sensors .\health_watch\processing pi@pi:/home/pi/projects/health_watch/
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy_pi.ps1 -PiHost pi.local
 ```
 
-Nếu Windows không phân giải được tên máy `pi`, thay `pi@pi` bằng
-`pi@<địa-chỉ-IP-của-Pi>`. Thư mục trên Pi là
-`/home/pi/projects/health_watch`. Các thư mục `backend/`, `web/`, `infra/`,
-`contracts/` ở cấp dự án lớn không chạy trên Pi.
+Nếu `pi.local` không phân giải được, dùng IP của Pi, ví dụ
+`-PiHost 192.168.110.50`. Script chỉ chép allowlist source cần chạy, tạo bản
+sao lưu source cũ trong `backups/`, và **giữ nguyên** `.env` cùng `.venv` trên
+Pi. Nó không chép `backend/`, `web/`, `infra/`, APK, cache hoặc secret lên Pi.
+
+Nếu muốn chạy SCP thủ công, tạo thư mục đích trước rồi chép theo chiều
+Windows → Pi. Không dùng `scp -r .\health_watch` nếu thư mục Windows có
+`.env` hoặc `.venv`:
+
+```powershell
+ssh pi@pi.local "mkdir -p /home/pi/projects/health_watch"
+scp .\health_watch\main.py .\health_watch\config.py .\health_watch\alerts.py .\health_watch\screen.py .\health_watch\telemetry.py .\health_watch\mqtt_publisher.py .\health_watch\check_i2c.py .\health_watch\check_alerts.py .\health_watch\check_mqtt.py .\health_watch\requirements.txt .\health_watch\.env.example .\health_watch\run.sh pi@pi.local:/home/pi/projects/health_watch/
+scp -r .\health_watch\sensors .\health_watch\processing .\health_watch\tests .\health_watch\deploy pi@pi.local:/home/pi/projects/health_watch/
+```
+
+Nếu username không phải `pi`, truyền thêm `-PiUser <username>` cho script.
+Đường dẫn mặc định trên Pi là `/home/pi/projects/health_watch`.
 
 ## Chuẩn bị trên Pi 4, Debian 13 (Trixie)
 
@@ -49,15 +78,16 @@ Chạy trong phiên SSH:
 
 ```bash
 cd /home/pi/projects/health_watch
-sudo raspi-config nonint do_i2c 0
-sudo raspi-config nonint do_spi 0
-sudo apt update
-sudo apt install -y python3-venv python3-spidev python3-libgpiod i2c-tools fonts-dejavu-core
-python3 -m venv .venv --system-site-packages
-source .venv/bin/activate
-python -m pip install -r requirements.txt
+bash deploy/pi/setup.sh
+sudo reboot
+```
+
+Sau khi Pi lên lại, SSH vào và kiểm tra:
+
+```bash
+cd /home/pi/projects/health_watch
 ls /dev/i2c-1 /dev/spidev0.0
-python check_i2c.py
+.venv/bin/python check_i2c.py
 ```
 
 `check_i2c.py` cần thấy `0x57` (MAX30102) và `0x68` (MPU6050; có thể là
@@ -65,8 +95,9 @@ python check_i2c.py
 GND, SDA/SCL và mối hàn trước khi chạy `main.py`. Chương trình hiện đặt
 MPU6050 ở `0x68` trong `config.py`.
 
-Nếu `/dev/i2c-1` hoặc `/dev/spidev0.0` chưa xuất hiện sau khi bật giao tiếp,
-khởi động lại Pi rồi SSH vào lại. Bật lại venv bằng:
+`setup.sh` có thể chạy lại sau mỗi lần cập nhật `requirements.txt`; nó không
+xóa `.venv`. Nếu `/dev/i2c-1` hoặc `/dev/spidev0.0` chưa xuất hiện, kiểm tra
+I2C/SPI trong `raspi-config` rồi reboot. Bật lại venv thủ công bằng:
 
 ```bash
 cd /home/pi/projects/health_watch
@@ -89,7 +120,7 @@ Windows Firewall nhận TCP cổng `1883`. Trên Pi, tạo file cấu hình riê
 
 ```bash
 cd /home/pi/projects/health_watch
-cp .env.example .env
+cp -n .env.example .env
 nano .env
 ```
 
@@ -112,10 +143,12 @@ Nạp biến môi trường rồi chạy trong cùng terminal:
 set -a
 . ./.env
 set +a
-python main.py
+.venv/bin/python check_mqtt.py
+./run.sh
 ```
 
-Khi đúng, terminal Pi báo `MQTT đã kết nối và gửi trạng thái online`. Trên máy
+`check_mqtt.py` chỉ xác thực với broker, không gửi số đo giả. Khi `run.sh`
+đúng, terminal Pi báo `MQTT đã kết nối và gửi trạng thái online`. Trên máy
 tính, mở <http://localhost:5173> hoặc gọi API `/api/v1/devices`. Mỗi lần chạy
 có một `boot_id`; backend dùng nó cùng `sequence` để chống ghi trùng QoS 1.
 
@@ -124,7 +157,8 @@ có một `boot_id`; backend dùng nó cùng `sequence` để chống ghi trùng
 Thử riêng nút, hai LED và còi trước:
 
 ```bash
-python check_alerts.py
+sudo systemctl stop health-watch 2>/dev/null || true
+.venv/bin/python check_alerts.py
 ```
 
 Khi thả nút: LED xanh sáng, LED đỏ và còi tắt. Khi giữ nút: LED đỏ và còi
@@ -135,14 +169,14 @@ Nếu còi kêu ngay khi khởi động, kiểm tra nhãn VCC/GND/I/O của modu
 Sau đó chạy thử tích hợp:
 
 ```bash
-python main.py
+./run.sh
 ```
 
 Có thể kiểm tra logic phát hiện ngã và quy tắc còi/LED mà không cần tác động
 lên phần cứng bằng:
 
 ```bash
-python -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 Màn hình quay 180° theo cách đặt hiện tại; giao diện nền tối và các thẻ màu
@@ -153,18 +187,58 @@ Khi chưa đặt tay, đồ thị nhịp tim là đường ngang và BPM hiện 
 ít nhất 125 mẫu (khoảng 5 giây ở 25 mẫu/giây); nếu sóng chưa đều, BPM vẫn
 hiện `--` thay vì đoán một con số.
 Khi giữ nút SOS, đèn đỏ và còi bật, đèn xanh tắt; thả nút thì bình thường.
+Khi web/app gửi lệnh cảnh báo từ xa, Pi bật đèn đỏ và còi trong 10 giây
+(tối đa 60 giây theo contract), rồi tự tắt. Gạt công tắc trên web/app về
+**OFF** để gửi lệnh dừng sớm.
+Pi bỏ lệnh trùng, lệnh sai thiết bị và lệnh đã cũ; command MQTT không retained.
+Mỗi khi còi hoặc LED đổi trạng thái, Pi gửi `alert-state` retained để web/app
+hiển thị trạng thái phần cứng thật và backend chặn lệnh bật lặp.
 Khi phát hiện ngã, **chỉ LED đỏ bật, còi tắt**; màn hình giữ dòng
 `PHÁT HIỆN NGÃ`. Nhấn nút một lần để xác nhận và xóa cảnh báo; thả nút ra
 trước khi dùng nút SOS tiếp. Nhấn `Ctrl+C` để dừng; chương trình gửi trạng
 thái offline, dừng worker MQTT và tắt các ngõ ra khi thoát.
 Nếu màn hình không hiện nhưng terminal vẫn có số, kiểm tra dây SPI, chân
 `DC/RES/CS` và `BLK`. Nếu chương trình báo lỗi cảm biến, chạy lại
-`python check_i2c.py`.
+`.venv/bin/python check_i2c.py`.
 
 Nếu xuất hiện `[Errno 5] Input/output error` khi di chuyển breadboard,
 tắt nguồn Pi rồi kiểm tra và cắm chắc bốn dây nguồn/GND/SDA/SCL của cả hai
 cảm biến. Mã sẽ thử lại tối đa 3 lần và ghi rõ lỗi ở MPU6050 hay MAX30102;
 nếu vẫn lỗi liên tiếp thì dừng để tránh coi dữ liệu mất kết nối là số đo thật.
+
+## Chạy tự động bằng systemd
+
+Chỉ cài service sau khi `check_i2c.py`, `check_alerts.py`, `check_mqtt.py` và
+`./run.sh` đều chạy đúng. Dừng lần chạy tay bằng `Ctrl+C`, rồi:
+
+```bash
+cd /home/pi/projects/health_watch
+./deploy/pi/install_service.sh
+sudo systemctl status health-watch --no-pager
+sudo journalctl -u health-watch -f
+```
+
+Service chạy bằng user Pi, nạp `.env`, tự khởi động cùng máy và tự chạy lại
+khi chương trình lỗi. Để sửa mạch hoặc chạy script kiểm tra GPIO, dừng service
+trước để tránh hai tiến trình cùng giữ chân:
+
+```bash
+sudo systemctl stop health-watch
+# chạy kiểm tra hoặc sửa mạch
+sudo systemctl start health-watch
+```
+
+Quy trình cập nhật, xem log và khôi phục source cũ nằm trong
+[runbook vận hành](../docs/runbooks/README.md).
+
+Sau khi chép một phiên bản mới có thay đổi điều khiển MQTT, chạy:
+
+```bash
+cd /home/pi/projects/health_watch
+.venv/bin/python -m unittest discover -s tests -v
+sudo systemctl restart health-watch
+sudo journalctl -u health-watch -n 30 --no-pager
+```
 
 ## Giới hạn cần biết
 

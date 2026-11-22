@@ -112,8 +112,15 @@ def render_dashboard(steps, pulse, alert_state: str, now=None):
     draw.ellipse((28, 242, 32, 246), fill=accent)
     draw.ellipse((35, 242, 39, 246), fill=accent)
     draw.arc((26, 243, 40, 253), 15 if alert_state else 0, 165 if alert_state else 180, fill=accent, width=2)
-    title = "PHÁT HIỆN NGÃ" if alert_state == "fall" else ("SOS ĐANG BẬT" if alert_state == "sos" else "BÌNH THƯỜNG")
-    detail = "Nhấn nút để xác nhận" if alert_state == "fall" else ("LED đỏ + còi" if alert_state == "sos" else "Nhấn nút để thử SOS")
+    title = (
+        "PHÁT HIỆN NGÃ" if alert_state == "fall" else
+        ("SOS ĐANG BẬT" if alert_state == "sos" else
+         ("CẢNH BÁO TỪ XA" if alert_state == "remote" else "BÌNH THƯỜNG"))
+    )
+    detail = (
+        "Nhấn nút để xác nhận" if alert_state == "fall" else
+        ("LED đỏ + còi" if alert_state in {"sos", "remote"} else "Nhấn nút để thử SOS")
+    )
     draw.text((52, 229), title, font=FONT_STATUS, fill=accent)
     draw.text((53, 249), detail, font=FONT_SMALL, fill=MUTED)
     return image

@@ -1,13 +1,43 @@
-# MQTT ingest local
+# MQTT ingest
 
-Tiến trình `python -m backend.ingest.main` subscribe các topic `health/v1/devices/+/telemetry`, `+/events` và `+/status`. Nó đối chiếu `device_id` trong topic/payload, kiểm tra JSON Schema ở `contracts/mqtt/`, rồi ghi PostgreSQL.
+Ingest subscribe dữ liệu thiết bị và ghi PostgreSQL.
 
-- Telemetry được chống trùng bằng unique `(device_id, boot_id, sequence)`.
-- Event được chống trùng bằng `event_id`.
-- Lưu cả thời gian trên thiết bị và `received_at` của server.
-- `heart_rate_bpm: null` được giữ nguyên là chưa có phép đo.
-- Status online/offline cập nhật bảng thiết bị; API cũng coi dữ liệu quá 10 giây là không còn mới.
+## Topic nhận
 
-`MQTT_HOST`, `MQTT_USERNAME`, `MQTT_PASSWORD` và `DATABASE_URL` do Compose cung cấp. Bản tin sai schema được ghi cảnh báo trong log và bỏ qua.
+```text
+health/v1/devices/+/telemetry
+health/v1/devices/+/events
+health/v1/devices/+/status
+```
 
-Bản local chưa có hàng đợi bền vững trên Pi và chưa bảo đảm gửi bù khi mất điện/mất mạng. Dịch vụ này đủ để thử luồng mock và chống ghi trùng; cần bổ sung cơ chế xác nhận/lưu tạm trước khi đặt yêu cầu không mất dữ liệu.
+`commands` và `alert-state` không đi qua ingest: API publish command và trực
+tiếp subscribe state output để cập nhật giao diện với độ trễ thấp.
+
+## Quy trình xử lý
+
+1. Parse JSON và kiểm tra topic có đúng cấu trúc.
+2. Yêu cầu `device_id` trong payload khớp topic.
+3. Validate telemetry/event bằng JSON Schema trong `contracts/mqtt/`.
+4. Cập nhật `devices.online`, `last_seen_at`.
+5. Insert telemetry/event với khóa chống trùng.
+
+Payload sai schema được ghi warning và bỏ qua. `heart_rate_bpm: null` được lưu
+nguyên nghĩa “chưa có phép đo”, không chuyển thành 0.
+
+## Độ mới và online
+
+Status retained cho biết online/offline. API còn yêu cầu `last_seen_at` mới
+hơn 10 giây để tránh hiển thị online khi status cũ hoặc kết nối bất thường.
+
+## Log và kiểm tra
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml logs -f ingest
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec -T ingest python -m backend.smoke_local
+```
+
+## Giới hạn
+
+Ingest local xử lý tuần tự qua MQTT callback và chưa có dead-letter queue,
+metric hoặc replay từ storage. Pi có outbox RAM, chưa lưu bền vững telemetry
+khi mất điện/mạng dài.

@@ -1,9 +1,149 @@
-# Dashboard web local
+# Web dashboard và ứng dụng Android
 
-Ứng dụng Vue 3 + Vite chạy ở <http://localhost:5173> qua Docker Compose. Nó gọi FastAPI để lấy danh sách thiết bị, số đo mới nhất, lịch sử ngắn và sự kiện; cập nhật khoảng mỗi 3 giây. Vite proxy `/api` vào container API, nên trình duyệt máy tính/điện thoại cùng LAN không cần gọi PostgreSQL hay MQTT trực tiếp.
+Thư mục này chứa một giao diện Vue 3 dùng chung cho:
 
-Dashboard có trạng thái dữ liệu mới/cũ, hiển thị `--` khi BPM chưa có, và ghi `dashboard_view`/`device_select` bằng `session_id` ẩn danh. Dữ liệu hiển thị trong bản local là mock.
+- dashboard web chạy bằng Vite tại `http://localhost:5173`;
+- ứng dụng Android được đóng gói bằng Capacitor 8;
+- màn hình theo dõi thiết bị, số đo, lịch sử, sự kiện và điều khiển cảnh báo từ xa.
 
-Khi chạy Vite ngoài Compose trên Windows, dùng `npm.cmd install` rồi `npm.cmd run dev` trong thư mục `web/`; proxy mặc định gọi API ở `http://localhost:8000`. Khi đóng gói APK sau này, đặt `VITE_API_BASE_URL` tới địa chỉ API truy cập được từ điện thoại. Capacitor/Android chưa được thêm trong bản local này.
+Giao diện chỉ gọi FastAPI. Nó không kết nối trực tiếp tới MQTT hoặc PostgreSQL.
 
-Để thử trên điện thoại trong cùng LAN, mở `http://<IP-LAN-máy-tính>:5173`. Cổng 5173 phải được Windows Firewall cho phép; `localhost` trên điện thoại không trỏ tới máy tính.
+## 1. Cấu trúc
+
+| Đường dẫn | Chức năng |
+| --- | --- |
+| `src/` | Mã Vue, CSS và logic gọi API |
+| `android/` | Dự án Android do Capacitor tạo |
+| `vite.config.js` | Cấu hình Vite và proxy API khi chạy web local |
+| `capacitor.config.json` | Cấu hình đóng gói ứng dụng Android |
+| `package.json` | Lệnh cài, chạy, build và đồng bộ Android |
+
+## 2. Chạy web bằng Docker Compose
+
+Từ thư mục gốc dự án:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d
+```
+
+Mở <http://localhost:5173>. Mã nguồn `web/` được mount vào container nên phần lớn thay đổi giao diện sẽ được Vite cập nhật tự động.
+
+Nếu trình duyệt vẫn giữ bản cũ, dùng `Ctrl+F5` hoặc chạy:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml restart web
+```
+
+## 3. Chạy web trực tiếp bằng Node.js
+
+Yêu cầu Node.js 20 trở lên. Từ `web/`:
+
+```powershell
+npm.cmd install
+npm.cmd run dev
+```
+
+Proxy mặc định chuyển `/api` tới `http://localhost:8000`, vì vậy backend phải đang chạy. Muốn thử trên điện thoại cùng LAN, mở:
+
+```text
+http://<IP-LAN-của-máy-tính>:5173
+```
+
+Ví dụ trong mạng đã dùng khi triển khai: `http://172.20.10.11:5173`. Không dùng địa chỉ ví dụ nếu IP hiện tại đã thay đổi; kiểm tra bằng `ipconfig`.
+
+## 4. Cách dùng dashboard
+
+1. Chọn thiết bị trong danh sách.
+2. Kiểm tra trạng thái online và thời điểm nhận dữ liệu cuối.
+3. Theo dõi BPM, bước chân, calories, trạng thái ngón tay và các sự kiện.
+4. Trạng thái `--` ở BPM nghĩa là chưa có phép đo hợp lệ, không phải 0 BPM.
+5. Dữ liệu được làm mới định kỳ khoảng 3 giây; nhãn dữ liệu cũ/offline giúp phân biệt số đo mới với số đo lưu trong DB.
+
+### Công tắc cảnh báo ON/OFF
+
+Công tắc điều khiển LED đỏ và còi trên đúng Raspberry Pi đang chọn:
+
+- **OFF → ON**: API gửi lệnh MQTT; giao diện hiển thị trạng thái đang chờ cho tới khi Pi xác nhận.
+- **ON**: Pi đã báo trạng thái còi đang bật. Giao diện không gửi thêm lệnh bật trùng.
+- **ON → OFF**: gửi lệnh tắt sớm.
+- Pi tự tắt sau 10 giây mặc định nếu không có lệnh khác; thời lượng tối đa API chấp nhận là 60 giây.
+- Công tắc bị vô hiệu hóa khi thiết bị offline, chưa xác định được trạng thái cảnh báo, đang chờ phản hồi hoặc đang dùng `mock-pi`.
+
+Trạng thái trên giao diện là trạng thái Pi xác nhận qua topic `alert-state`, không phải phỏng đoán từ lần bấm gần nhất. Nếu giao diện kẹt ở “đang chờ”, xem mục xử lý lỗi phía dưới.
+
+## 5. Build APK debug
+
+Yêu cầu:
+
+- Node.js 20 trở lên;
+- JDK 21;
+- Android SDK, Android platform API 36 và build-tools 35;
+- biến môi trường Android SDK được cấu hình nếu Gradle không tự tìm thấy.
+
+Từ thư mục `web/`:
+
+```powershell
+npm.cmd install
+npm.cmd run android:apk
+```
+
+Lệnh này build Vue, đồng bộ tài nguyên sang Capacitor và build APK tại:
+
+```text
+web/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Repo cũng có thể chứa bản sao tiện cài ở thư mục gốc: `HealthWatch-debug.apk`. Khi giao diện thay đổi, phải build lại; không mặc định coi bản APK cũ là mới nhất.
+
+Chỉ đồng bộ mã web sang dự án Android mà chưa build APK:
+
+```powershell
+npm.cmd run android:sync
+```
+
+## 6. Cài và cấu hình app Android
+
+Cài qua ADB khi đã bật USB debugging:
+
+```powershell
+adb install -r .\android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+Điện thoại và máy chạy backend phải ở cùng mạng. Trong app, nhập API theo dạng:
+
+```text
+http://<IP-LAN-của-máy-tính>:8000
+```
+
+Sau đó nhấn **Lưu và kết nối**. Không nhập `localhost`, vì trên điện thoại địa chỉ đó trỏ về chính điện thoại. Windows Firewall phải cho phép TCP 8000 trên mạng Private.
+
+## 7. Kiểm tra sau khi sửa giao diện
+
+```powershell
+Set-Location C:\Project\health_watch_system\web
+npm.cmd run build
+npm.cmd run android:apk
+```
+
+Kiểm tra thủ công cả web và app:
+
+- danh sách thiết bị và số đo tải được;
+- trạng thái offline/dữ liệu cũ hiển thị đúng;
+- công tắc chuyển qua trạng thái chờ, ON rồi tự về OFF sau khi Pi xác nhận;
+- bấm ON khi đã ON không tạo lệnh trùng;
+- APK truy cập được API bằng IP LAN.
+
+## 8. Xử lý lỗi
+
+| Hiện tượng | Cách kiểm tra |
+| --- | --- |
+| Web báo không gọi được API | `Invoke-RestMethod http://localhost:8000/health`; xem log container `api` |
+| Điện thoại không kết nối | Dùng IP LAN thay vì `localhost`; kiểm tra cùng Wi-Fi và firewall TCP 8000 |
+| Không thấy giao diện mới | `Ctrl+F5`, restart container web; APK phải được build và cài lại |
+| Công tắc bị khóa | Kiểm tra thiết bị online, trạng thái `alert-state`, và không chọn `mock-pi` |
+| Công tắc chờ quá lâu | Xem log API, Mosquitto và `journalctl -u health-watch`; kiểm tra credential MQTT |
+| Pi đã tắt nhưng web vẫn ON | Kiểm tra Pi có publish retained `alert-state` và API có kết nối MQTT hay không |
+
+## 9. Giới hạn bảo mật
+
+APK debug đang cho phép HTTP cleartext để thử trong LAN. Cấu hình local chưa có đăng nhập người dùng và CORS còn mở. Trước khi phát hành thật cần HTTPS, xác thực/phân quyền, giới hạn CORS, API domain cố định, APK/AAB release được ký và cất keystore ngoài Git.

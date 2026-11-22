@@ -1,7 +1,34 @@
 # Mock Raspberry Pi
 
-Container `mock-pi` gửi telemetry mỗi giây cho thiết bị `pi-watch-mock-001` theo [MQTT contract v1](../../contracts/mqtt/README.md). Số BPM dao động giả lập, bước tăng theo thời gian, km/kcal tính từ bước; đôi lúc `finger_present=false` và BPM là `null`.
+`mock-pi` cho phép kiểm thử broker → ingest → PostgreSQL → API → web mà không
+có Raspberry Pi.
 
-Trong mỗi chu kỳ 60 giây, mock phát `fall_detected`, `fall_acknowledged`, `sos_pressed`, `sos_released`. Khi kết nối/ngắt, nó phát status online/offline. Đây là dữ liệu tạo bằng code, không đọc cảm biến Pi.
+## Dữ liệu tạo ra
 
-Để bật mock, dùng `--profile mock` trong lệnh Docker Compose ở [README gốc](../../README.md). Khi thay bằng Pi thật, bỏ profile mock và cho Pi publish cùng topic/schema với credential MQTT local.
+- Telemetry mỗi giây.
+- BPM dao động giả lập; có lúc `finger_present=false`, BPM `null`.
+- Bước tăng theo thời gian; mét/kcal tính từ bước.
+- Chu kỳ event 60 giây: `fall_detected`, `fall_acknowledged`, `sos_pressed`,
+  `sos_released`.
+- Status online/offline retained.
+
+Mock **không** mô phỏng `commands`, GPIO hoặc `alert-state`. Vì vậy công tắc
+còi trên web/app bị khóa với mock; hãy dùng Pi thật để test điều khiển hai chiều.
+
+## Chạy
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock up --build -d
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock logs -f mock-pi
+```
+
+ID lấy từ `MOCK_DEVICE_ID`, mặc định `pi-watch-mock-001`.
+
+## Tắt trước khi dùng Pi thật
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
+```
+
+Mock chỉ phục vụ kiểm thử phần mềm; không dùng số liệu mock để đánh giá cảm
+biến hoặc thuật toán sức khỏe.

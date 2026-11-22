@@ -1,9 +1,13 @@
 """Kiểm tra publisher chạy nền mà không cần broker thật."""
 
+import json
 import sys
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from uuid import uuid4
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -32,8 +36,10 @@ class FakeClient:
     def __init__(self):
         self.on_connect = None
         self.on_disconnect = None
+        self.on_message = None
         self.published = []
         self.connected_to = None
+        self.subscriptions = []
 
     def username_pw_set(self, username, password):
         self.credentials = (username, password)
@@ -56,6 +62,10 @@ class FakeClient:
     def publish(self, topic, payload, qos, retain):
         self.published.append((topic, payload, qos, retain))
         return FakePublishInfo()
+
+    def subscribe(self, topic, qos):
+        self.subscriptions.append((topic, qos))
+        return (0, 1)
 
     def disconnect(self):
         return None
@@ -91,6 +101,51 @@ class MqttPublisherTests(unittest.TestCase):
         self.assertIn("health/v1/devices/pi-test/telemetry", topics)
         self.assertEqual(topics.count("health/v1/devices/pi-test/status"), 2)
         self.assertEqual(fake.will[0], "health/v1/devices/pi-test/status")
+        self.assertIn(("health/v1/devices/pi-test/commands", 1), fake.subscriptions)
+
+    def test_accepts_fresh_remote_alert_once(self):
+        fake = FakeClient()
+        with patch("mqtt_publisher.mqtt.Client", return_value=fake):
+            publisher = MqttPublisher(
+                self.settings(), {"state": "online"}, {"state": "offline"}
+            )
+        command = {
+            "schema_version": 1,
+            "command_id": str(uuid4()),
+            "device_id": "pi-test",
+            "command_type": "remote_alert",
+            "active": True,
+            "duration_s": 10,
+            "issued_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        message = SimpleNamespace(payload=json.dumps(command).encode("utf-8"))
+        publisher._on_message(None, None, message)
+        publisher._on_message(None, None, message)
+
+        commands = publisher.pop_commands()
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(commands[0]["active"])
+        self.assertEqual(commands[0]["duration_s"], 10)
+
+    def test_rejects_stale_remote_alert(self):
+        fake = FakeClient()
+        with patch("mqtt_publisher.mqtt.Client", return_value=fake):
+            publisher = MqttPublisher(
+                self.settings(), {"state": "online"}, {"state": "offline"}
+            )
+        command = {
+            "schema_version": 1,
+            "command_id": str(uuid4()),
+            "device_id": "pi-test",
+            "command_type": "remote_alert",
+            "active": True,
+            "duration_s": 10,
+            "issued_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        }
+        publisher._on_message(
+            None, None, SimpleNamespace(payload=json.dumps(command).encode("utf-8"))
+        )
+        self.assertEqual(publisher.pop_commands(), [])
 
     def test_full_outbox_keeps_events_over_telemetry(self):
         fake = FakeClient()
@@ -112,6 +167,21 @@ class MqttPublisherTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             settings.validate()
+
+    def test_alert_state_is_retained_and_latest_state_wins(self):
+        fake = FakeClient()
+        with patch("mqtt_publisher.mqtt.Client", return_value=fake):
+            publisher = MqttPublisher(
+                self.settings(), {"state": "online"}, {"state": "offline"}
+            )
+            publisher._started = True
+            publisher.publish_alert_state({"buzzer_active": True})
+            publisher.publish_alert_state({"buzzer_active": False})
+
+        states = [item for item in publisher._outbox if item.kind == "state"]
+        self.assertEqual(len(states), 1)
+        self.assertFalse(states[0].document["buzzer_active"])
+        self.assertTrue(states[0].retain)
 
 
 if __name__ == "__main__":

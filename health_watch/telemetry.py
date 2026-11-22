@@ -1,7 +1,7 @@
 """Tạo payload MQTT v1 độc lập với phần cứng."""
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 
@@ -73,4 +73,34 @@ class DeviceMessageFactory:
             "boot_id": self.boot_id,
             "state": state,
             "software_version": "health-watch-pi/0.1.0",
+        }
+
+    def alert_state(
+        self,
+        *,
+        buzzer_active: bool,
+        red_led_active: bool,
+        source: str,
+        last_command_id: str | None,
+        remote_remaining_s: float = 0,
+    ) -> dict:
+        if source not in {"normal", "remote", "sos", "fall"}:
+            raise ValueError(f"Nguồn cảnh báo không hợp lệ: {source}")
+        command_id = str(UUID(last_command_id)) if last_command_id else None
+        now = datetime.now(timezone.utc)
+        expires_at = None
+        if source == "remote" and remote_remaining_s > 0:
+            expires_at = (now + timedelta(seconds=remote_remaining_s)).isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z")
+        return {
+            "schema_version": 1,
+            "device_id": self.device_id,
+            "boot_id": self.boot_id,
+            "buzzer_active": bool(buzzer_active),
+            "red_led_active": bool(red_led_active),
+            "source": source,
+            "last_command_id": command_id,
+            "expires_at": expires_at,
+            "reported_at": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         }

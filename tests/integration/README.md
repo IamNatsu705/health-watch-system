@@ -1,14 +1,75 @@
-# Kiểm tra tích hợp dự kiến
+# Kiểm tra tích hợp đầu-cuối
 
-Các test ở đây sẽ kiểm tra đường đi của dữ liệu sau khi broker, ingest và API tồn tại. Chưa có test tích hợp chạy được trong bộ khung hiện tại.
+Repo có smoke test local chạy được và một checklist thủ công cho Raspberry Pi thật.
 
-Các kịch bản tối thiểu:
+## 1. Smoke test tự động với mock
 
-1. Publish một telemetry hợp schema → ingest ghi PostgreSQL → API trả đúng `latest` và `history`.
-2. Publish cùng `(device_id, boot_id, sequence)` hai lần → chỉ có một hàng DB.
-3. Publish một event `fall_detected`, rồi lại cùng `event_id` → chỉ có một sự kiện.
-4. Publish dữ liệu sai schema hoặc `device_id` không khớp topic → bị từ chối và có log chẩn đoán.
-5. Pi/broker ngắt kết nối → API hiển thị thời điểm cuối, web/Android đánh dấu offline; phần cảnh báo trên Pi vẫn chạy.
-6. Người dùng không được gán thiết bị → API không trả dữ liệu thiết bị đó.
+```powershell
+Set-Location C:\Project\health_watch_system
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock up --build -d
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec -T ingest python -m backend.smoke_local
+```
 
-Test logic Pi hiện có vẫn nằm trong `health_watch/tests/` và có thể chạy riêng mà không cần broker hay PostgreSQL.
+Bài test kiểm tra:
+
+1. payload telemetry hợp schema;
+2. ingest ghi PostgreSQL;
+3. API trả latest/history;
+4. publish trùng `(device_id, boot_id, sequence)` không tạo thêm hàng;
+5. event trùng `event_id` không tạo thêm sự kiện;
+6. payload sai bị từ chối và có log phù hợp.
+
+## 2. Tích hợp với Raspberry Pi thật
+
+Trước khi thử, dừng mock:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
+```
+
+Sau đó:
+
+1. Start `health-watch.service` trên Pi.
+2. Xác nhận status MQTT online và telemetry tăng sequence.
+3. Kiểm tra ingest ghi đúng `MQTT_DEVICE_ID`.
+4. Kiểm tra API `devices`, `latest`, `history`, `events`.
+5. Mở web và APK, kiểm tra số đo/thời điểm cập nhật thống nhất.
+6. Nhấn SOS có kiểm soát, xác nhận event xuất hiện.
+7. Ngắt broker ngắn: Pi vẫn chạy phần cứng; giao diện chuyển offline/dữ liệu cũ.
+8. Kết nối lại: status/telemetry phục hồi mà không tạo bản ghi trùng.
+
+## 3. Tích hợp công tắc cảnh báo
+
+Với Pi online:
+
+1. Lấy trạng thái ban đầu OFF từ retained `alert-state`.
+2. Gạt ON; API trả chấp nhận, Pi bật LED đỏ/còi và publish ON.
+3. Khi ON, thử gửi ON lần nữa; giao diện khóa và API từ chối lệnh lặp.
+4. Gạt OFF; Pi tắt ngay và publish OFF.
+5. Gạt ON rồi để yên; Pi tự tắt sau khoảng 10 giây.
+6. Restart API; API phải khôi phục trạng thái từ retained `alert-state`.
+7. Xác nhận command không retained: restart Pi không được tự bật lại từ lệnh cũ.
+8. Xác nhận mock không cho phép điều khiển.
+
+Theo dõi:
+
+```bash
+sudo journalctl -u health-watch -f
+```
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml logs -f api mosquitto ingest
+```
+
+## 4. Kịch bản lỗi bắt buộc
+
+| Kịch bản | Kết quả mong đợi |
+| --- | --- |
+| Payload sai schema/device topic không khớp | Ingest từ chối và ghi log, không crash |
+| Giao lại QoS 1 | DB không sinh hàng trùng |
+| Pi mất mạng | UI báo offline; cảnh báo local và auto-off vẫn hoạt động |
+| API mất MQTT | Endpoint điều khiển trả lỗi khả dụng, không giả báo thành công |
+| Lệnh quá cũ/sai thiết bị | Pi bỏ qua và không đổi GPIO |
+| Người dùng không có quyền | Chưa thể xác nhận ở bản local vì auth chưa triển khai; đây là điều kiện trước cloud |
+
+Không tạo cú ngã của người thật để kiểm thử. Việc xác nhận thuật toán ngã và BPM cần một kế hoạch dữ liệu/đối chiếu riêng.

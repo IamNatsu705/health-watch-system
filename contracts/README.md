@@ -1,7 +1,15 @@
-# Hợp đồng dữ liệu dùng chung
+# Hợp đồng dữ liệu
 
-`mqtt/` là nguồn chuẩn cho topic, trường và phiên bản bản tin từ Pi tới backend. Pi tạo payload theo hợp đồng này; ingest phải kiểm tra nó trước khi ghi DB. [Xem MQTT v1](mqtt/README.md).
+`contracts/` là nguồn chuẩn giữa Pi, mock, ingest, API, web và Android.
 
-`api/` sẽ lưu mô tả OpenAPI được xuất từ FastAPI khi API hoạt động. Web dùng mô tả đó để thống nhất kiểu dữ liệu với backend; không tự đặt tên trường khác.
+- [`mqtt/`](mqtt/README.md): topic, JSON Schema và QoS.
+- [`api/`](api/README.md): quy ước HTTP API.
 
-Nguyên tắc: thay đổi tương thích có thể thêm trường tùy chọn; thay đổi tên/ý nghĩa trường, đơn vị đo hoặc xóa trường bắt buộc cần phiên bản mới. `schema_version` đi cùng từng bản tin. Không đặt khóa bí mật vào contract.
+Nguyên tắc:
+
+- Không đưa secret vào schema hoặc ví dụ.
+- Timestamp dùng UTC ISO 8601.
+- Đơn vị phải rõ (`bpm`, mét, kcal).
+- Thêm trường tùy chọn có thể giữ version; đổi tên/ý nghĩa/đơn vị hoặc xóa
+  trường bắt buộc phải tạo version mới.
+- Producer và consumer phải được test với cùng contract trước deploy.

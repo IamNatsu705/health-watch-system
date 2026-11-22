@@ -1,0 +1,122 @@
+.native-settings {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 1fr);
+  align-items: center;
+  gap: 12px 22px;
+  margin: -10px 0 24px;
+  padding: 18px;
+  background: #142331;
+  border: 1px solid #294050;
+  border-radius: 16px;
+}
+
+.native-settings .eyebrow { margin-bottom: 4px; }
+.native-settings small { grid-column: 2; color: #8297a8; }
+.api-address-row { display: flex; gap: 8px; }
+
+.api-address-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #345063;
+  border-radius: 10px;
+  background: #0d1a26;
+  color: #eef7fb;
+  padding: 11px 12px;
+  font: 500 14px sans-serif;
+  outline: none;
+}
+
+.api-address-row input:focus { border-color: #60d6d1; }
+
+.api-address-row button {
+  border: 0;
+  border-radius: 10px;
+  background: #60d6d1;
+  color: #092028;
+  padding: 0 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.remote-alert-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.25fr);
+  align-items: center;
+  gap: 24px;
+  margin: 0 0 20px;
+  padding: 22px 24px;
+  background: linear-gradient(135deg, #241b26, #142331 70%);
+  border: 1px solid #6d3945;
+  border-radius: 20px;
+}
+
+.remote-alert-copy h2 {
+  margin: 3px 0 8px;
+  font: 800 21px 'Manrope', sans-serif;
+}
+
+.remote-alert-copy p:last-child { margin: 0; color: #9babb7; font-size: 13px; line-height: 1.5; }
+.remote-alert-actions { display: grid; gap: 10px; }
+.alert-control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: stretch; }
+.alert-state-badge {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid #385061;
+  border-radius: 11px;
+  color: #a9bbc6;
+  background: #101f2b;
+  font-size: 13px;
+  font-weight: 700;
+}
+.alert-state-badge i { width: 9px; height: 9px; border-radius: 50%; background: #6f8491; }
+.alert-state-badge.active { border-color: #b83d50; color: #ffb1ba; background: #321c25; }
+.alert-state-badge.active i { background: #ff5368; box-shadow: 0 0 12px #ff5368; }
+.alert-state-badge.pending { border-color: #b89545; color: #f0d48f; }
+.alert-state-badge.pending i { background: #e9bd55; animation: alert-pulse 1s infinite alternate; }
+@keyframes alert-pulse { to { opacity: .35; } }
+.alert-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 128px;
+  min-height: 48px;
+  padding: 8px 13px;
+  border: 1px solid #3a5262;
+  border-radius: 14px;
+  color: #9eb0bb;
+  background: #132430;
+  font: 800 13px 'Manrope', sans-serif;
+  letter-spacing: .08em;
+  cursor: pointer;
+  transition: background .2s, border-color .2s, color .2s, transform .15s;
+}
+.alert-toggle:not(:disabled):active { transform: scale(.97); }
+.alert-toggle:disabled { opacity: .48; cursor: not-allowed; }
+.alert-toggle-track { position: relative; width: 52px; height: 28px; border-radius: 99px; background: #344956; box-shadow: inset 0 0 0 1px #ffffff0d; transition: background .2s; }
+.alert-toggle-thumb { position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 50%; background: #c9d5db; box-shadow: 0 3px 8px #0006; transition: transform .22s ease, background .2s; }
+.alert-toggle.on { color: #fff; background: #3a1d27; border-color: #be4054; }
+.alert-toggle.on .alert-toggle-track { background: #d4475c; }
+.alert-toggle.on .alert-toggle-thumb { transform: translateX(24px); background: #fff; }
+.alert-toggle.pending { border-color: #b89545; }
+.alert-toggle.pending .alert-toggle-thumb { animation: alert-pulse .8s infinite alternate; }
+.alert-toggle-label { min-width: 28px; text-align: center; }
+.remote-alert-actions small { color: #8ea4b2; }
+.remote-alert-actions small.command-error { color: #ff9ca7; }
+
+@media (max-width: 650px) {
+  .native-settings { grid-template-columns: 1fr; }
+  .native-settings small { grid-column: 1; }
+  .api-address-row { flex-direction: column; }
+  .api-address-row button { padding: 11px; }
+  .remote-alert-panel { grid-template-columns: 1fr; padding: 20px; }
+  .alert-control-row { grid-template-columns: 1fr auto; }
+}
+
+@media (max-width: 430px) {
+  .alert-control-row { grid-template-columns: 1fr; }
+  .alert-toggle { width: 100%; }
+}

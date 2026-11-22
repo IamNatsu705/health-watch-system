@@ -6,6 +6,8 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from uuid import UUID
 
 import paho.mqtt.client as mqtt
 
@@ -39,6 +41,7 @@ class PendingMessage:
     suffix: str
     document: dict
     kind: str
+    retain: bool = False
 
 
 class MqttPublisher:
@@ -51,6 +54,8 @@ class MqttPublisher:
         self.online_status = online_status
         self.offline_status = offline_status
         self._outbox: deque[PendingMessage] = deque()
+        self._commands: deque[dict] = deque(maxlen=20)
+        self._seen_command_ids: deque[str] = deque(maxlen=100)
         self._condition = threading.Condition()
         self._connected = False
         self._stopping = False
@@ -66,6 +71,7 @@ class MqttPublisher:
         self.client.max_inflight_messages_set(10)
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
         self.client.will_set(
             f"{self.base_topic}/status",
             self._encode(offline_status),
@@ -100,10 +106,72 @@ class MqttPublisher:
         )
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             log.warning("Không xếp được trạng thái online: %s", mqtt.error_string(info.rc))
+        result, _ = client.subscribe(f"{self.base_topic}/commands", qos=1)
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            log.warning("Không đăng ký được topic lệnh: %s", mqtt.error_string(result))
         with self._condition:
             self._connected = True
             self._condition.notify_all()
         log.info("MQTT đã kết nối và gửi trạng thái online")
+
+    def _on_message(self, client, userdata, message) -> None:
+        try:
+            document = json.loads(message.payload.decode("utf-8"))
+            command = self._validate_command(document)
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            log.warning("Bỏ lệnh MQTT không hợp lệ: %s", exc)
+            return
+
+        with self._condition:
+            command_id = command["command_id"]
+            if command_id in self._seen_command_ids:
+                log.info("Bỏ lệnh MQTT trùng command_id=%s", command_id)
+                return
+            self._seen_command_ids.append(command_id)
+            self._commands.append(command)
+            self._condition.notify_all()
+        log.info("Đã nhận lệnh remote_alert active=%s", command["active"])
+
+    def _validate_command(self, document: dict) -> dict:
+        if not isinstance(document, dict):
+            raise ValueError("payload phải là object")
+        if document.get("schema_version") != 1:
+            raise ValueError("schema_version không được hỗ trợ")
+        if document.get("device_id") != self.settings.device_id:
+            raise ValueError("device_id không khớp")
+        if document.get("command_type") != "remote_alert":
+            raise ValueError("command_type không được hỗ trợ")
+
+        command_id = str(UUID(str(document.get("command_id"))))
+        active = document.get("active")
+        duration_s = document.get("duration_s")
+        if not isinstance(active, bool):
+            raise ValueError("active phải là boolean")
+        if isinstance(duration_s, bool) or not isinstance(duration_s, int) or not 1 <= duration_s <= 60:
+            raise ValueError("duration_s phải nằm trong khoảng 1..60")
+
+        issued_at_text = document.get("issued_at")
+        if not isinstance(issued_at_text, str):
+            raise ValueError("issued_at bị thiếu")
+        issued_at = datetime.fromisoformat(issued_at_text.replace("Z", "+00:00"))
+        if issued_at.tzinfo is None:
+            raise ValueError("issued_at phải có múi giờ")
+        age_s = (datetime.now(timezone.utc) - issued_at.astimezone(timezone.utc)).total_seconds()
+        if age_s > 120 or age_s < -30:
+            raise ValueError("lệnh đã cũ hoặc timestamp ở tương lai")
+
+        return {
+            "command_id": command_id,
+            "active": active,
+            "duration_s": duration_s,
+        }
+
+    def pop_commands(self) -> list[dict]:
+        """Return commands for the hardware loop; GPIO is never touched on MQTT's thread."""
+        with self._condition:
+            commands = list(self._commands)
+            self._commands.clear()
+        return commands
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
         with self._condition:
@@ -118,10 +186,17 @@ class MqttPublisher:
     def publish_event(self, document: dict) -> None:
         self._enqueue(PendingMessage("events", document, "event"))
 
+    def publish_alert_state(self, document: dict) -> None:
+        self._enqueue(PendingMessage("alert-state", document, "state", retain=True))
+
     def _enqueue(self, message: PendingMessage) -> None:
         if not self._started or self._stopping:
             return
         with self._condition:
+            if message.kind == "state":
+                self._outbox = deque(
+                    pending for pending in self._outbox if pending.kind != "state"
+                )
             if len(self._outbox) >= self.settings.outbox_size:
                 telemetry_index = next(
                     (index for index, pending in enumerate(self._outbox) if pending.kind == "telemetry"),
@@ -153,7 +228,7 @@ class MqttPublisher:
                     f"{self.base_topic}/{pending.suffix}",
                     self._encode(pending.document),
                     qos=1,
-                    retain=False,
+                    retain=pending.retain,
                 )
                 info.wait_for_publish(timeout=5)
                 if not info.is_published():

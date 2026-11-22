@@ -1,0 +1,25 @@
+[Unit]
+Description=Health Watch edge sensor and MQTT publisher
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=@@PI_USER@@
+Group=@@PI_GROUP@@
+WorkingDirectory=@@APP_DIR@@
+EnvironmentFile=@@APP_DIR@@/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@@APP_DIR@@/.venv/bin/python @@APP_DIR@@/main.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
