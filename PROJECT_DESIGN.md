@@ -2,7 +2,7 @@
 
 ## Hiện trạng
 
-Thư mục `health_watch/` là bản copy nguyên vẹn từ Raspberry Pi, chưa được nối với MQTT. Bản local trên máy tính **đã chạy được** bằng dữ liệu mock: publisher giả lập Pi → Mosquitto → ingest → PostgreSQL → FastAPI → dashboard Vue. Lệnh chạy, URL và giới hạn bảo mật ở [README.md](README.md).
+Thư mục `health_watch/` bắt nguồn từ bản copy trên Raspberry Pi và đã được bổ sung publisher MQTT nền. Bản local trên máy tính **đã chạy được** bằng dữ liệu mock: publisher giả lập Pi → Mosquitto → ingest → PostgreSQL → FastAPI → dashboard Vue. Khi thử phần cứng thật, chạy stack không có profile `mock` rồi cấu hình Pi gửi vào cùng contract. Lệnh chạy, URL và giới hạn bảo mật ở [README.md](README.md).
 
 ```text
 health_watch_system/
@@ -41,7 +41,7 @@ Bản local chưa có tài khoản/ủy quyền; log chỉ ghi `session_id` ẩn
 
 ## Bước tiếp theo
 
-1. Thêm publisher MQTT **không chặn vòng lặp cảm biến** vào `health_watch/`, giữ nguyên TFT/LED/còi chạy tại chỗ. Chỉ thay `mock-pi` bằng Pi thật sau khi test phần cứng; dùng IP LAN của máy tính, không dùng `localhost` trên Pi.
+1. Triển khai các file `health_watch/` mới lên Pi, đặt `.env` riêng và xác nhận publisher MQTT nền không làm gián đoạn TFT/LED/còi khi broker mất kết nối. Dùng IP LAN của máy tính, không dùng `localhost` trên Pi.
 2. Thêm cấu hình/bảo mật cho môi trường thật: credential từng Pi, quyền topic, MQTT TLS, HTTPS, đăng nhập người dùng và phân quyền xem thiết bị.
 3. Sau khi chốt nhu cầu Android, đóng gói dashboard bằng Capacitor hoặc xây UI native dùng cùng API. APK **chưa có** trong bản local này.
 4. Chọn bài toán Edge AI sau khi có dữ liệu và tiêu chí đánh giá; kết quả model phải lưu kèm tên/phiên bản/độ tin cậy, không ghi đè số đo gốc. AI **chưa triển khai**.

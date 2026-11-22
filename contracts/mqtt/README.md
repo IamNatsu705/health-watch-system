@@ -1,4 +1,4 @@
-# MQTT contract v1 — bản nháp
+# MQTT contract v1
 
 Broker nhận ba topic theo ID thiết bị:
 
@@ -39,4 +39,8 @@ Ví dụ telemetry:
 }
 ```
 
-Schema này là bản nháp thiết kế; code Pi hiện tại chưa publish MQTT. Trước khi triển khai, xác nhận khoảng gửi, các trường cần hiển thị và cách lưu status/offline với dữ liệu thực tế.
+Code Pi tại `health_watch/telemetry.py` tạo payload này và
+`health_watch/mqtt_publisher.py` gửi QoS 1 bằng worker nền. Last Will giữ trạng
+thái `offline`, còn mỗi lần kết nối/reconnect gửi lại `online`. Status hiện
+được ingest kiểm tra ở mức tối thiểu; nếu bổ sung trường không tương thích,
+phải tạo contract phiên bản mới.

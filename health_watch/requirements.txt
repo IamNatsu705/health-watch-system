@@ -2,3 +2,4 @@ Adafruit-Blinka
 adafruit-circuitpython-rgb-display
 Pillow
 smbus2
+paho-mqtt>=2.1,<3

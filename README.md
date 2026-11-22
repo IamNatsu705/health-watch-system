@@ -46,7 +46,7 @@ Lệnh `down` giữ lại volume PostgreSQL. File `infra/local/.env` dành riên
 
 | Thư mục | Vai trò | Nơi chạy khi thử local |
 | --- | --- | --- |
-| [`health_watch/`](health_watch/README.md) | Code cảm biến/TFT/LED/còi hiện có; chưa publish MQTT | Raspberry Pi, chưa tham gia bản mock |
+| [`health_watch/`](health_watch/README.md) | Code cảm biến/TFT/LED/còi và publisher MQTT nền | Raspberry Pi; thay container mock khi thử phần cứng thật |
 | [`backend/mock_publisher/`](backend/mock_publisher/README.md) | Giả lập Pi và phát bản tin v1 | Container `mock-pi` trên máy tính |
 | [`backend/ingest/`](backend/ingest/README.md) | Nhận MQTT, kiểm tra schema, ghi DB | Container trên máy tính |
 | [`backend/api/`](backend/api/README.md) | Đọc DB, trả HTTP API, ghi hoạt động trình duyệt | Container trên máy tính |
@@ -54,7 +54,7 @@ Lệnh `down` giữ lại volume PostgreSQL. File `infra/local/.env` dành riên
 | [`contracts/mqtt/`](contracts/mqtt/README.md) | Cấu trúc bản tin dùng chung | Pi/mock và ingest |
 | [`infra/local/`](infra/local/README.md) | Docker Compose, cấu hình broker/DB | Máy tính |
 
-Xem [kiến trúc hệ thống](docs/ARCHITECTURE.md) và [thiết kế tổng thể](PROJECT_DESIGN.md) để biết đường chuyển từ local lên cloud. APK và AI chưa được triển khai trong bản local này.
+Xem [kiến trúc hệ thống](docs/ARCHITECTURE.md) và [thiết kế tổng thể](PROJECT_DESIGN.md) để biết đường chuyển từ local lên cloud. Hướng dẫn nối Pi thật nằm trong [README của Pi](health_watch/README.md). APK và AI chưa được triển khai trong bản local này.
 
 ## Giới hạn bản local
 

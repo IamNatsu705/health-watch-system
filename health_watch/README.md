@@ -3,7 +3,8 @@
 Thư mục này dùng riêng cho bài cuối kỳ. `main.py` đọc GY-521/MPU6050 và
 MAX30102 qua I2C, đếm bước thử nghiệm, ước tính quãng đường/calo, rồi hiện
 thông tin lên TFT ST7789V3 240x280 qua SPI. MPU6050 cũng được dùng để thử
-phát hiện ngã. Chưa dùng Flask, web hay Firebase.
+phát hiện ngã. Một worker nền gửi telemetry và sự kiện qua MQTT; mất mạng
+không chặn vòng lặp cảm biến, màn hình, LED hoặc còi.
 
 ## Mạch đang dùng
 
@@ -32,14 +33,15 @@ Chạy trên **máy Windows**, từ thư mục dự án lớn `health_watch_syst
 
 ```powershell
 Set-Location 'C:\Project\health_watch_system'
-scp .\health_watch\main.py .\health_watch\config.py .\health_watch\alerts.py .\health_watch\screen.py .\health_watch\requirements.txt pi@pi:/home/pi/projects/health_watch/
+scp .\health_watch\main.py .\health_watch\config.py .\health_watch\alerts.py .\health_watch\screen.py .\health_watch\telemetry.py .\health_watch\mqtt_publisher.py .\health_watch\requirements.txt .\health_watch\.env.example pi@pi:/home/pi/projects/health_watch/
 scp .\health_watch\check_i2c.py .\health_watch\check_alerts.py pi@pi:/home/pi/projects/health_watch/
 scp -r .\health_watch\sensors .\health_watch\processing pi@pi:/home/pi/projects/health_watch/
 ```
 
 Nếu Windows không phân giải được tên máy `pi`, thay `pi@pi` bằng
 `pi@<địa-chỉ-IP-của-Pi>`. Thư mục trên Pi là
-`/home/pi/projects/health_watch`. Sau khi thêm publisher MQTT hoặc file Python mới, cập nhật danh sách file triển khai tương ứng. Các thư mục `backend/`, `web/`, `infra/`, `contracts/` ở cấp dự án lớn không chạy trên Pi.
+`/home/pi/projects/health_watch`. Các thư mục `backend/`, `web/`, `infra/`,
+`contracts/` ở cấp dự án lớn không chạy trên Pi.
 
 ## Chuẩn bị trên Pi 4, Debian 13 (Trixie)
 
@@ -70,6 +72,52 @@ khởi động lại Pi rồi SSH vào lại. Bật lại venv bằng:
 cd /home/pi/projects/health_watch
 source .venv/bin/activate
 ```
+
+## Cấu hình Pi gửi MQTT về máy tính local
+
+Trên máy tính, chạy stack **không kèm mock publisher** để tránh có thêm thiết
+bị giả. Đứng tại `C:\Project\health_watch_system`:
+
+```powershell
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d
+ipconfig
+```
+
+Ghi lại IPv4 của card Wi-Fi/Ethernet cùng mạng với Pi. Broker phải cho phép
+Windows Firewall nhận TCP cổng `1883`. Trên Pi, tạo file cấu hình riêng:
+
+```bash
+cd /home/pi/projects/health_watch
+cp .env.example .env
+nano .env
+```
+
+Sửa tối thiểu các giá trị sau. `MQTT_HOST` là IP của **máy tính**, không phải
+`localhost`; mật khẩu phải khớp `MQTT_PASSWORD` trong
+`infra/local/.env` trên máy tính:
+
+```dotenv
+MQTT_ENABLED=1
+MQTT_HOST=192.168.1.10
+MQTT_PORT=1883
+MQTT_USERNAME=health_watch
+MQTT_PASSWORD=mat_khau_trong_infra_local_env
+MQTT_DEVICE_ID=pi-watch-001
+```
+
+Nạp biến môi trường rồi chạy trong cùng terminal:
+
+```bash
+set -a
+. ./.env
+set +a
+python main.py
+```
+
+Khi đúng, terminal Pi báo `MQTT đã kết nối và gửi trạng thái online`. Trên máy
+tính, mở <http://localhost:5173> hoặc gọi API `/api/v1/devices`. Mỗi lần chạy
+có một `boot_id`; backend dùng nó cùng `sequence` để chống ghi trùng QoS 1.
 
 ## Chạy thử tích hợp
 
@@ -107,8 +155,8 @@ hiện `--` thay vì đoán một con số.
 Khi giữ nút SOS, đèn đỏ và còi bật, đèn xanh tắt; thả nút thì bình thường.
 Khi phát hiện ngã, **chỉ LED đỏ bật, còi tắt**; màn hình giữ dòng
 `PHÁT HIỆN NGÃ`. Nhấn nút một lần để xác nhận và xóa cảnh báo; thả nút ra
-trước khi dùng nút SOS tiếp. Nhấn `Ctrl+C` để dừng; chương trình tắt các
-ngõ ra khi thoát.
+trước khi dùng nút SOS tiếp. Nhấn `Ctrl+C` để dừng; chương trình gửi trạng
+thái offline, dừng worker MQTT và tắt các ngõ ra khi thoát.
 Nếu màn hình không hiện nhưng terminal vẫn có số, kiểm tra dây SPI, chân
 `DC/RES/CS` và `BLK`. Nếu chương trình báo lỗi cảm biến, chạy lại
 `python check_i2c.py`.
@@ -136,6 +184,10 @@ nếu vẫn lỗi liên tiếp thì dừng để tránh coi dữ liệu mất k�
 - MPU6050 được đặt thang gia tốc ±8 g, con quay ±500 độ/giây để đọc được
   mức va chạm dùng trong thuật toán. Hai giá trị này khác phiên bản trước
   (±2 g, ±250 độ/giây); không phải thay dây hay cài thêm thư viện.
+- Hàng đợi MQTT hiện nằm trong RAM và có giới hạn. Khi mất mạng lâu, telemetry
+  cũ được bỏ trước để không làm đầy bộ nhớ; đây chưa phải cơ chế lưu bền vững.
+- MQTT local chưa bật TLS. Không mở cổng broker ra Internet; trước khi lên
+  cloud cần TLS, credential riêng cho mỗi Pi và ACL giới hạn topic.
 
 Nguồn tham khảo: mã mẫu `SmartWatchTEAM/Smart-watch-IoT`, datasheet MAX30102
 của Analog Devices, datasheet MPU6050 của TDK và thư viện RGB Display của

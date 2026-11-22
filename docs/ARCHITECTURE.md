@@ -22,7 +22,7 @@ Raspberry Pi                         Máy tính local / máy chủ cloud
                                                       └───────────────────┘
 ```
 
-Bản local đã triển khai broker, PostgreSQL, ingest, API và web trên máy tính. `backend/mock_publisher/` đóng vai Pi trong sơ đồ để thử không cần phần cứng; `health_watch/` hiện vẫn là bản code Pi gốc và chưa publish MQTT. Android APK và Edge AI chưa triển khai. Khi dùng Pi thật trong LAN, chỉ thay mock publisher bằng publisher tích hợp trong `health_watch/`; khi đưa server lên cloud, giữ hợp đồng bản tin và API nhưng cần thêm bảo mật như mục 7.
+Bản local đã triển khai broker, PostgreSQL, ingest, API và web trên máy tính. `backend/mock_publisher/` đóng vai Pi để thử không cần phần cứng; `health_watch/` đã có publisher MQTT nền và cấu hình qua biến môi trường để thay mock bằng Pi thật trong LAN. Android APK và Edge AI chưa triển khai. Khi đưa server lên cloud, giữ hợp đồng bản tin và API nhưng cần thêm bảo mật như mục 7.
 
 ## 3. Trách nhiệm và ranh giới
 
@@ -62,7 +62,7 @@ Ngã, SOS và xác nhận ngã đi theo topic `events` với `event_id` riêng. 
 
 | Nội dung | Local | Cloud |
 | --- | --- | --- |
-| Pi | Hiện dùng `mock-pi`; `health_watch/` sẽ chạy trực tiếp trên Pi sau khi thêm publisher | Vẫn chạy trên Pi |
+| Pi | Có thể dùng `mock-pi` hoặc chạy `health_watch/` trực tiếp trên Pi với publisher nền | Vẫn chạy trên Pi |
 | Broker/ingest/API/PostgreSQL | Docker Compose trên máy tính | Máy chủ/managed service với TLS, sao lưu, giám sát |
 | Web | Vite trên máy tính | Host giao diện qua HTTPS |
 | Android | Chưa triển khai APK | APK gọi API qua tên miền HTTPS sau khi triển khai |

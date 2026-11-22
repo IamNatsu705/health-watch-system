@@ -1,5 +1,6 @@
-"""Thử MAX30102 + MPU6050 và hiển thị trực tiếp, chưa có web/Firebase."""
+"""Đọc cảm biến, điều khiển cảnh báo tại chỗ và gửi snapshot lên MQTT."""
 
+import logging
 import time
 
 from smbus2 import SMBus
@@ -9,18 +10,32 @@ from config import (
     I2C_BUS,
     I2C_READ_ATTEMPTS,
     MAX30102_ADDRESS,
+    MQTT_DEVICE_ID,
+    MQTT_ENABLED,
+    MQTT_HOST,
+    MQTT_KEEPALIVE_S,
+    MQTT_OUTBOX_SIZE,
+    MQTT_PASSWORD,
+    MQTT_PORT,
+    MQTT_PUBLISH_INTERVAL_S,
+    MQTT_USERNAME,
     MPU6050_ADDRESS,
     SAMPLE_INTERVAL_S,
     SCREEN_INTERVAL_S,
     STEP_LENGTH_M,
     WEIGHT_KG,
 )
+from mqtt_publisher import BrokerSettings, MqttPublisher
 from processing.pulse import PulseMonitor
 from processing.fall import FallDetector
 from processing.steps import StepCounter
 from screen import Screen
 from sensors.max30102 import MAX30102
 from sensors.mpu6050 import MPU6050
+from telemetry import DeviceMessageFactory
+
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def read_i2c(label: str, operation):
@@ -37,7 +52,30 @@ def read_i2c(label: str, operation):
 
 def main() -> None:
     alerts = AlertOutputs()
+    publisher = None
+    messages = None
     try:
+        if MQTT_ENABLED:
+            if MQTT_PUBLISH_INTERVAL_S <= 0:
+                raise ValueError("MQTT_PUBLISH_INTERVAL_S phải lớn hơn 0")
+            messages = DeviceMessageFactory(MQTT_DEVICE_ID)
+            publisher = MqttPublisher(
+                BrokerSettings(
+                    host=MQTT_HOST,
+                    port=MQTT_PORT,
+                    username=MQTT_USERNAME,
+                    password=MQTT_PASSWORD,
+                    device_id=messages.device_id,
+                    keepalive=MQTT_KEEPALIVE_S,
+                    outbox_size=MQTT_OUTBOX_SIZE,
+                ),
+                online_status=messages.status("online"),
+                offline_status=messages.status("offline"),
+            )
+            publisher.start()
+        else:
+            print("MQTT dang tat. Dat MQTT_ENABLED=1 sau khi cau hinh broker.")
+
         screen = Screen()
         screen.status("KHOI DONG CAM BIEN", "Kiem tra I2C...")
         with SMBus(I2C_BUS) as bus:
@@ -53,8 +91,10 @@ def main() -> None:
             pulse = PulseMonitor(MAX30102.SAMPLES_PER_SECOND)
             last_screen = float("-inf")
             last_log = float("-inf")
+            last_publish = float("-inf")
             last_alert = None
             last_button = False
+            last_sos = False
             acknowledge_press = False
             print("Da nhan MPU6050 va MAX30102. Nhan Ctrl+C de dung.")
 
@@ -74,9 +114,11 @@ def main() -> None:
                     raise SystemExit(f"Loi doc I2C: {exc}") from exc
 
                 button = alerts.button_pressed
+                fall_acknowledged = False
                 if fall.confirmed and button and not last_button and not just_fell:
                     fall.clear()
                     acknowledge_press = True
+                    fall_acknowledged = True
                     print("Da xac nhan canh bao nga.")
                 if not button:
                     acknowledge_press = False
@@ -89,6 +131,27 @@ def main() -> None:
                            "": "Trang thai binh thuong."}[alert_state])
                     last_alert = alert_state
                     last_screen = float("-inf")
+
+                if publisher and messages:
+                    if just_fell:
+                        publisher.publish_event(messages.event("fall_detected"))
+                    if fall_acknowledged:
+                        publisher.publish_event(messages.event("fall_acknowledged"))
+                    if sos_pressed != last_sos:
+                        event_type = "sos_pressed" if sos_pressed else "sos_released"
+                        publisher.publish_event(messages.event(event_type))
+                    if started - last_publish >= MQTT_PUBLISH_INTERVAL_S:
+                        publisher.publish_telemetry(
+                            messages.telemetry(
+                                heart_rate_bpm=pulse.bpm,
+                                finger_present=pulse.finger_present,
+                                steps_session=steps.steps,
+                                distance_m_session=steps.distance_km * 1000,
+                                calories_kcal_session=steps.calories_kcal,
+                            )
+                        )
+                        last_publish = started
+                last_sos = sos_pressed
                 last_button = button
 
                 if started - last_screen >= SCREEN_INTERVAL_S:
@@ -104,6 +167,8 @@ def main() -> None:
                     last_log = started
                 time.sleep(max(0, SAMPLE_INTERVAL_S - (time.monotonic() - started)))
     finally:
+        if publisher:
+            publisher.stop()
         alerts.close()
 
 
