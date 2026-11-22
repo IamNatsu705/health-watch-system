@@ -1,0 +1,11 @@
+health_watch/
+web/
+infra/
+docs/
+tests/
+*.md
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.env
+**/node_modules/

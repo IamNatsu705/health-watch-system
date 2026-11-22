@@ -1,0 +1,106 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: health_watch
+      POSTGRES_USER: health_watch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in infra/local/.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U health_watch -d health_watch"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:?Set MQTT_USERNAME in infra/local/.env}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in infra/local/.env}
+    entrypoint: ["/bin/sh", "/mosquitto/config/start.sh"]
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/start.sh:/mosquitto/config/start.sh:ro
+    ports:
+      - "1883:1883"
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://health_watch:${POSTGRES_PASSWORD}@db:5432/health_watch
+    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ingest:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://health_watch:${POSTGRES_PASSWORD}@db:5432/health_watch
+      MQTT_HOST: mosquitto
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+    command: ["python", "-m", "backend.ingest.main"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://health_watch:${POSTGRES_PASSWORD}@db:5432/health_watch
+    command: ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  mock-pi:
+    profiles: ["mock"]
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      MOCK_DEVICE_ID: ${MOCK_DEVICE_ID:-pi-watch-mock-001}
+    command: ["python", "-m", "backend.mock_publisher.main"]
+    depends_on:
+      mosquitto:
+        condition: service_started
+      ingest:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ../../web:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    command: ["sh", "-c", "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"]
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  web_node_modules:

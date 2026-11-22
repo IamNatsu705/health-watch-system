@@ -1,0 +1,28 @@
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+.pytest_cache/
+
+# JavaScript / Android
+**/node_modules/
+**/dist/
+**/build/
+**/.gradle/
+**/*.apk
+**/*.aab
+
+# Local configuration and data
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/*.sqlite
+**/*.sqlite3
+infra/local/data/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
