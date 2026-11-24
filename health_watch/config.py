@@ -16,7 +16,7 @@ DISPLAY_ROTATION = 180  # Màn hình đang lắp ngược chiều nhìn.
 
 GREEN_LED_GPIO = 22
 RED_LED_GPIO = 27
-BUZZER_GPIO = 17  # MH-FMD kích mức thấp.
+BUZZER_GPIO = 5 # MH-FMD kích mức cao để còi ko kêu khi boot.
 SOS_BUTTON_GPIO = 23  # Nút nối GPIO23 với GND, dùng pull-up nội bộ.
 
 # Chỉ là giá trị mẫu cho phần ước tính vận động; sửa theo người thử.
