@@ -20,7 +20,8 @@ async function request(path, options = {}) {
     let detail = `HTTP ${response.status}`
     try {
       const body = await response.json()
-      detail = body.detail || detail
+      if (typeof body.detail === 'string') detail = body.detail
+      else if (Array.isArray(body.detail)) detail = body.detail.map(item => item.msg).join('; ')
     } catch { /* keep HTTP status */ }
     throw new Error(detail)
   }
@@ -32,6 +33,13 @@ export const api = {
   latest: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/latest`),
   history: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/history?limit=45`),
   events: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/events?limit=8`),
+  dailySteps: (id, days = 7) => request(`/api/v1/devices/${encodeURIComponent(id)}/steps/daily?days=${days}`),
+  profile: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/profile`),
+  saveProfile: (id, profile) => request(`/api/v1/devices/${encodeURIComponent(id)}/profile`, {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  }),
+  clearProfile: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/profile`, { method: 'DELETE' }),
   remoteAlert: (id, active, durationS = 10) => request(
     `/api/v1/devices/${encodeURIComponent(id)}/commands/remote-alert`,
     {
