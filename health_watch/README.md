@@ -1,8 +1,9 @@
 # Health Watch - edge runtime trên Raspberry Pi
 
-Thư mục này dùng riêng cho bài cuối kỳ. `main.py` đọc GY-521/MPU6050 và
-MAX30102 qua I2C, đếm bước thử nghiệm, ước tính quãng đường/calo, rồi hiện
-thông tin lên TFT ST7789V3 240x280 qua SPI. MPU6050 cũng được dùng để thử
+Thư mục này dùng riêng cho bài cuối kỳ. `main.py` đọc GY-521/MPU6050 qua FIFO
+100 Hz và MAX30102 qua I2C, đếm bước bằng thuật toán xử lý tín hiệu và AI chạy
+trên Pi, ước tính quãng đường/kcal khi có hồ sơ người đeo thật, rồi hiện thông
+tin lên TFT ST7789V3 240x280 qua SPI. MPU6050 cũng được dùng để thử
 phát hiện ngã. Một worker nền gửi telemetry và sự kiện qua MQTT; mất mạng
 không chặn vòng lặp cảm biến, màn hình, LED hoặc còi. Pi cũng nhận lệnh
 cảnh báo từ web/app và trả trạng thái phần cứng thật qua MQTT.
@@ -12,11 +13,14 @@ cảnh báo từ web/app và trả trạng thái phần cứng thật qua MQTT.
 | Đường dẫn | Vai trò |
 | --- | --- |
 | `main.py` | Vòng lặp cảm biến, màn hình, cảnh báo và tích hợp MQTT |
-| `config.py` | Chân GPIO, ngưỡng và cấu hình thuật toán |
-| `sensors/` | Driver MPU6050/MAX30102 |
-| `processing/` | Bước chân, BPM thử nghiệm và phát hiện ngã |
-| `telemetry.py` | Tạo payload đúng hợp đồng MQTT |
-| `mqtt_publisher.py` | Kết nối nền, outbox, nhận command và publish state |
+| `config.py` | Chân GPIO, chu kỳ vòng lặp và cấu hình MQTT |
+| `sensors/` | Driver MPU6050 (FIFO 100 Hz, tự phát hiện lỗi) và MAX30102 |
+| `processing/` | Bộ lọc, đếm bước v2, đặc trưng cửa sổ, BPM thử nghiệm, phát hiện ngã |
+| `inference/`, `models/` | Mô hình AI "đang đi bộ hay không" (JSON) và suy luận thuần Python |
+| `user_profile.py`, `storage.py` | Hồ sơ người đeo, ước tính quãng đường/kcal, lưu bước hôm nay |
+| `record_imu.py` | Ghi dữ liệu MPU6050 thật có nhãn để kiểm định/huấn luyện AI |
+| `telemetry.py` | Tạo payload đúng hợp đồng MQTT (telemetry v2) |
+| `mqtt_publisher.py` | Kết nối nền, outbox, nhận command/config và publish state |
 | `check_*.py` | Kiểm tra I2C, GPIO/cảnh báo và MQTT |
 | `tests/` | Unit test không cần phần cứng thật |
 | `deploy/pi/` | Script setup và cài systemd |
@@ -35,13 +39,14 @@ cảnh báo từ web/app và trả trạng thái phần cứng thật qua MQTT.
 | TFT RES | GPIO24 | 18 |
 | LED xanh (qua điện trở 220 Ω) | GPIO22 | 15 |
 | LED đỏ (qua điện trở 220 Ω) | GPIO27 | 13 |
-| MH-FMD I/O (kích mức thấp) | GPIO17 | 11 |
+| MH-FMD I/O (kích mức thấp) | GPIO5 | 29 |
 | Nút SOS, đầu còn lại nối GND | GPIO23 | 16 |
 
 Nguồn các module: 3,3 V và GND chung. TFT `BLK` đang nối 3,3 V.
 Còi MH-FMD có điện trở kéo lên 10 kΩ từ I/O tới 3,3 V. Nút dùng điện trở
 kéo lên nội bộ của Pi. Không chạy đồng thời chương trình giữa kỳ đang dùng
-các GPIO22/GPIO27/GPIO17.
+các GPIO22/GPIO27/GPIO5. Còi dời từ GPIO17 sang GPIO5 vì GPIO5 có pull-up
+mặc định khi Pi khởi động, nên còi kích mức thấp không kêu lúc boot.
 
 ## Chép từ Windows bằng PowerShell
 
@@ -106,11 +111,10 @@ source .venv/bin/activate
 
 ## Cấu hình Pi gửi MQTT về máy tính local
 
-Trên máy tính, chạy stack **không kèm mock publisher** để tránh có thêm thiết
-bị giả. Đứng tại `C:\Project\health_watch_system`:
+Trên máy tính, khai báo Pi trong `infra/local/.env` (`MQTT_DEVICES=pi-watch-001:mat_khau_rieng`)
+rồi chạy stack tại thư mục gốc dự án:
 
 ```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d
 ipconfig
 ```
@@ -125,16 +129,17 @@ nano .env
 ```
 
 Sửa tối thiểu các giá trị sau. `MQTT_HOST` là IP của **máy tính**, không phải
-`localhost`; mật khẩu phải khớp `MQTT_PASSWORD` trong
-`infra/local/.env` trên máy tính:
+`localhost`. Mỗi Pi có tài khoản MQTT riêng: `MQTT_USERNAME` trùng
+`MQTT_DEVICE_ID`, và mật khẩu khớp phần sau dấu `:` của Pi này trong `MQTT_DEVICES`.
+Broker chỉ cho tài khoản này ghi vào `health/v1/devices/pi-watch-001/...`.
 
 ```dotenv
 MQTT_ENABLED=1
 MQTT_HOST=192.168.1.10
 MQTT_PORT=1883
-MQTT_USERNAME=health_watch
-MQTT_PASSWORD=mat_khau_trong_infra_local_env
 MQTT_DEVICE_ID=pi-watch-001
+MQTT_USERNAME=pi-watch-001
+MQTT_PASSWORD=mat_khau_rieng
 ```
 
 Nạp biến môi trường rồi chạy trong cùng terminal:
@@ -240,28 +245,38 @@ sudo systemctl restart health-watch
 sudo journalctl -u health-watch -n 30 --no-pager
 ```
 
+## Đếm bước, AI và ghi dữ liệu thật
+
+- MPU6050 lấy mẫu 100 Hz vào FIFO (lọc 44 Hz, đồng hồ PLL). Vòng lặp chính đọc FIFO
+  mỗi 40 ms, nên vẽ TFT không làm mất mẫu. Log in `imu=ok fifo_overflow=0` khi bình
+  thường. Nếu `fifo_overflow` tăng, vòng lặp bị chặn quá 1,7 s.
+- Có hai bộ đếm: `steps_alg` (thuật toán `peak-bout-v2`) và `steps_ai` (cổng AI
+  `walk-gate-rf`). Màn hình và web dùng số AI khi `models/walk_gate.json` nạp được;
+  nếu thiếu hoặc hỏng file, Pi ghi cảnh báo và chỉ dùng thuật toán.
+- Kết quả đánh giá trên dữ liệu thật nằm ở [ml/README.md](../ml/README.md). Cần đo lại
+  trên MPU6050 của nhóm bằng `record_imu.py` theo [docs/data-collection.md](../docs/data-collection.md).
+- Số bước hôm nay lưu ở `state/daily_steps.json` (mỗi 10 s và khi dừng), qua 0 giờ
+  thì đặt lại. Hồ sơ người đeo nhận từ web/app qua MQTT `config` và lưu ở
+  `state/profile.json`. Chưa có hồ sơ thì quãng đường và kcal là `--`.
+- Khi MPU6050 lỗi (I2C, chip tự reset, dữ liệu đứng yên), màn hình hiện
+  `LỖI CẢM BIẾN` và huy hiệu `IMU!`, bộ đếm dừng, Pi tự khởi tạo lại mỗi 2 s. Lỗi
+  MAX30102 không làm dừng đếm bước.
+
 ## Giới hạn cần biết
 
-- Bộ đếm bước là thuật toán tìm đỉnh gia tốc để thử phần cứng. Lắc tay có thể
-  tạo bước giả. Cần cố định MPU6050 lên người và so với số bước đếm tay.
-- `KCAL~` dùng bước chân, chiều dài bước mẫu 0,70 m, cân nặng mẫu 70 kg và
-  hệ số minh họa 0,75 kcal/(kg·km). Sửa hai giá trị đầu trong `config.py`.
+- Quãng đường = số bước × chiều dài bước (tự đo, hoặc 0,414 × chiều cao); kcal hoạt
+  động theo phương trình ACSM. Cả hai đều là ước tính.
 - `BPM~` là ước tính từ các đỉnh IR, chưa qua đánh giá độ chính xác. Số IR thô
   giúp xác nhận MAX30102 đang thu tín hiệu. Chưa tính SpO2 vì cần thuật toán
   và hiệu chuẩn phù hợp; không điền số giả lên màn hình.
 - Phát hiện ngã dựa trên rơi/va chạm, đổi hướng so với trước va chạm và ít
-  cử động khoảng 1,8 giây. Đây là logic thử nghiệm chuyển từ repo tham khảo
-  sang MPU6050; chưa được hiệu chỉnh cho cách đeo thật. Lắc, thả hoặc đập
-  riêng module có thể cho kết quả khác một cú ngã thật. Không làm người thử
-  té ngã để kiểm tra; cố định module, kiểm tra dây rồi thử chuyển động có
-  kiểm soát. Mạch breadboard đang lỏng có thể mất I2C khi di chuyển.
-- MPU6050 được đặt thang gia tốc ±8 g, con quay ±500 độ/giây để đọc được
-  mức va chạm dùng trong thuật toán. Hai giá trị này khác phiên bản trước
-  (±2 g, ±250 độ/giây); không phải thay dây hay cài thêm thư viện.
-- Hàng đợi MQTT hiện nằm trong RAM và có giới hạn. Khi mất mạng lâu, telemetry
-  cũ được bỏ trước để không làm đầy bộ nhớ; đây chưa phải cơ chế lưu bền vững.
-- MQTT local chưa bật TLS. Không mở cổng broker ra Internet; trước khi lên
-  cloud cần TLS, credential riêng cho mỗi Pi và ACL giới hạn topic.
+  cử động khoảng 1,8 giây; hiện nhận mẫu 100 Hz từ FIFO. Logic chưa được hiệu
+  chỉnh cho cách đeo thật. Không làm người thử té ngã để kiểm tra.
+- MPU6050 đặt thang ±8 g, ±500 °/s. Driver đọc lại thanh ghi sau khi cấu hình
+  và từ chối chạy nếu chip không nhận cấu hình.
+- Hàng đợi MQTT nằm trong RAM. Khi dừng có kiểm soát, các bản tin còn chờ được gửi
+  nốt (tối đa 3 s); mất điện thì mất phần chưa gửi.
+- MQTT local chưa bật TLS. Không mở cổng broker ra Internet.
 
 Nguồn tham khảo: mã mẫu `SmartWatchTEAM/Smart-watch-IoT`, datasheet MAX30102
 của Analog Devices, datasheet MPU6050 của TDK và thư viện RGB Display của

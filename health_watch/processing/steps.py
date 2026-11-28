@@ -172,7 +172,6 @@ class StepEngine:
         self.windows_evaluated = 0
         self.samples_processed = 0
         self.segments = 0
-        self._new_primary = []
         self._start_segment()
 
     @property
@@ -220,11 +219,6 @@ class StepEngine:
         self.cadence_hz = None
         self._start_segment()
 
-    def drain_new_steps(self) -> list[tuple[int, float]]:
-        """Các bước mới của nguồn chính (AI nếu có, ngược lại là thuật toán) kèm nhịp Hz."""
-        steps, self._new_primary = self._new_primary, []
-        return steps
-
     def add_sample(self, ax: float, ay: float, az: float) -> None:
         m = math.sqrt(ax * ax + ay * ay + az * az)
         if not self._started:
@@ -264,8 +258,6 @@ class StepEngine:
         else:
             self.steps_algorithm += count
             self.running_steps_algorithm += running
-        if source == self.primary_source and count:
-            self._new_primary.append((count, cadence_hz))
 
     def _on_algorithm_peak(self, index: int) -> None:
         for count, cadence in self._bout.add(index / self.sample_rate_hz):

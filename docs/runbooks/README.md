@@ -14,8 +14,7 @@ Từ PowerShell ở thư mục gốc:
 ```powershell
 Set-Location C:\Project\health_watch_system
 if (-not (Test-Path infra/local/.env)) { Copy-Item infra/local/.env.example infra/local/.env }
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d
+docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d --remove-orphans
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml ps
 Invoke-RestMethod http://localhost:8000/health
 ```
@@ -130,11 +129,11 @@ Invoke-RestMethod http://localhost:8000/api/v1/devices
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml logs --tail 100 ingest api
 ```
 
-Mở <http://localhost:5173>, chọn `MQTT_DEVICE_ID` của Pi và kiểm tra dữ liệu cập nhật. Nếu thiết bị mock còn xuất hiện, điều đó không có nghĩa mock đang chạy; DB có thể vẫn giữ thiết bị từ lần thử trước.
+Mở <http://localhost:5173>, chọn `MQTT_DEVICE_ID` của Pi và kiểm tra dữ liệu cập nhật. Chỉ thiết bị trong `MQTT_DEVICES` được hiển thị.
 
 ## 7. Kiểm tra công tắc cảnh báo từ xa
 
-1. Đảm bảo Pi hiện online và chọn đúng Pi thật, không chọn mock.
+1. Đảm bảo Pi hiện online và đang được chọn.
 2. Giao diện ban đầu phải hiển thị còi OFF sau khi nhận retained `alert-state`.
 3. Gạt công tắc sang ON.
 4. Giao diện chuyển sang chờ, sau đó ON khi Pi xác nhận; LED đỏ và còi bật.
@@ -208,16 +207,18 @@ Không dùng `down -v` nếu chưa chủ động chấp nhận mất dữ liệu
 | Hiện tượng | Kiểm tra đầu tiên |
 | --- | --- |
 | Pi offline trên web | `systemctl status`, `journalctl`, `check_mqtt.py`, IP broker |
-| MQTT báo từ chối | Username/password Pi phải khớp `infra/local/.env` |
+| MQTT báo từ chối | Trên Pi `MQTT_USERNAME` = `MQTT_DEVICE_ID`; mật khẩu khớp mục của Pi trong `MQTT_DEVICES` |
 | MQTT timeout | Cùng mạng, IP Windows hiện tại, firewall TCP 1883 |
 | Không có dữ liệu DB | Log `ingest`, schema/topic và migration |
 | API lỗi | `/health`, log `api`, trạng thái PostgreSQL/MQTT |
 | APK không vào API | Dùng IP LAN thay `localhost`; mở TCP 8000 |
-| Công tắc bị khóa | Thiết bị phải online, có `alert-state`, không phải mock |
+| Công tắc bị khóa | Thiết bị phải online và đã gửi `alert-state` |
+| Bước chân không tăng | Log Pi: `imu=`, `fifo_overflow=`, `steps_ai=`; web hiện cảnh báo IMU nếu cảm biến lỗi |
+| Web báo "Dữ liệu cũ" | Pi không gửi telemetry mới: kiểm tra service, mạng, log `Rejected` của ingest |
 | Công tắc chờ mãi | Log API/Pi/broker; topic command và credential |
 | Còi đang bật nhưng web báo OFF | Kiểm tra Pi publish retained `alert-state`, restart API/Pi có kiểm soát |
 | Thiếu `0x57`/`0x68` | Nguồn 3,3 V, GND chung, SDA/SCL, dây/mối hàn |
-| GPIO bận/hành vi lạ | Dừng service và mọi chương trình cũ dùng GPIO17/22/23/27 |
+| GPIO bận/hành vi lạ | Dừng service và mọi chương trình cũ dùng GPIO5/22/23/27 |
 | Service restart liên tục | Xem journal; sửa lỗi rồi `sudo systemctl reset-failed health-watch` |
 
 ## 12. Tắt hệ thống an toàn

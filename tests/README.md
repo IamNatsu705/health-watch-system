@@ -6,9 +6,9 @@ Các lớp kiểm thử được tách theo phạm vi để dễ xác định l�
 
 | Lớp | Vị trí | Cần phần cứng/dịch vụ | Mục tiêu |
 | --- | --- | --- | --- |
-| Unit Pi | `health_watch/tests/` | Không | Phát hiện ngã, alert output, telemetry factory, outbox MQTT, screen |
-| Backend unit | `backend/tests/` | Tùy test; chạy trong image API | Command và trạng thái cảnh báo |
-| Smoke local | `backend/smoke_local.py` | Docker stack + mock | Schema, ingest, chống trùng, API |
+| Unit Pi | `health_watch/tests/` | Không | Driver MPU6050 FIFO (bus giả lập thanh ghi), bộ lọc, đếm bước, mô hình AI trên 2 đoạn dữ liệu thật OxWalk, hồ sơ/lưu trạng thái, phát hiện ngã, alert, telemetry v2, MQTT, screen |
+| Backend | `backend/tests/` | Không (SQLite trong bộ nhớ) | Contract dùng chính mã tạo payload của Pi; ingest từ chối dữ liệu sai/thiết bị lạ; API latest/daily/profile; trạng thái cảnh báo |
+| Đánh giá AI | `ml/` | PC + dataset thật | Sai số đếm bước theo người (xem `ml/README.md`) |
 | Build web | `web/` | Node.js | Bắt lỗi compile/bundle |
 | Android build | `web/android/` | Node/JDK/Android SDK | Tạo APK debug |
 | Tích hợp Pi thật | [integration/README.md](integration/README.md) | Toàn bộ hệ thống | MQTT, DB, web/app, command và GPIO |
@@ -20,26 +20,25 @@ cd /home/pi/projects/health_watch
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Các test này dùng giả lập/phụ thuộc được thay thế, không xác nhận dây phần cứng thật.
+Các test này cũng chạy được trên PC (`python -m unittest discover -s tests -v` trong
+`health_watch/`). Chúng thay phần cứng bằng bus I2C giả lập thanh ghi, nên không xác
+nhận dây phần cứng thật.
 
-## 3. Backend test bằng Docker
+## 3. Backend test
 
-Từ thư mục gốc trên Windows:
-
-```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml run --rm api python -m unittest discover -s backend/tests -v
-```
-
-## 4. Smoke test toàn bộ local
-
-Khởi động stack với mock:
+Từ thư mục gốc, với Python có `backend/requirements.txt` và `pytest`, `httpx`:
 
 ```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock up --build -d
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec -T ingest python -m backend.smoke_local
+python -m pytest backend/tests
 ```
 
-Smoke test xác nhận dữ liệu giả đi qua broker, ingest, DB và API; đồng thời kiểm tra schema và chống ghi trùng. Mock không xử lý remote command, vì vậy không dùng bài này để xác nhận công tắc còi.
+Test dùng SQLite trong bộ nhớ, **không ghi gì vào PostgreSQL thật**. Repo không còn
+smoke test ghi dữ liệu thử vào DB đang dùng.
+
+## 4. Kiểm định độ chính xác đếm bước
+
+Đánh giá mô hình trên dữ liệu thật: [ml/README.md](../ml/README.md). Đánh giá trên
+MPU6050 của nhóm: [docs/data-collection.md](../docs/data-collection.md).
 
 ## 5. Build web và APK
 
@@ -57,9 +56,9 @@ Nếu chỉ sửa backend/Pi và máy chưa có Android SDK, tối thiểu vẫn
 - Tất cả unit test qua.
 - `check_i2c.py` nhận đúng hai địa chỉ.
 - `check_mqtt.py` xác thực được broker.
-- Smoke local qua với mock.
-- Khi chuyển sang Pi thật, mock đã dừng.
-- Dữ liệu Pi hiện trong API/web.
+- Backend test qua.
+- Log Pi có `Đã nạp mô hình walk-gate-rf`, `imu=ok`, `fifo_overflow=0`.
+- Dữ liệu Pi hiện trong API/web, nguồn đếm bước là AI.
 - Công tắc ON/OFF được xác nhận bằng GPIO thật và `alert-state`.
 - Mất broker không làm treo vòng lặp phần cứng; cảnh báo tự tắt đúng hạn.
 

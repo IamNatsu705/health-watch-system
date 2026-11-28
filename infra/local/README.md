@@ -1,19 +1,19 @@
 # Môi trường local bằng Docker Compose
 
-[`compose.yaml`](compose.yaml) chạy toàn bộ phần server trên máy tính. Có thể
-dùng mock data hoặc thay mock bằng Raspberry Pi thật.
+[`compose.yaml`](compose.yaml) chạy toàn bộ phần server trên máy tính. Dữ liệu
+chỉ đến từ Raspberry Pi thật đã khai báo trong `MQTT_DEVICES`; không có dịch vụ
+giả lập thiết bị.
 
 ## Dịch vụ
 
 | Service | Vai trò | Cổng host |
 | --- | --- | --- |
 | `db` | PostgreSQL 17, lưu dữ liệu | Không public |
-| `mosquitto` | MQTT broker | `1883` |
+| `mosquitto` | MQTT broker, tài khoản + ACL riêng cho từng Pi, giữ retained ở volume `mosquitto_data` | `1883` |
 | `migrate` | Chạy Alembic rồi kết thúc | Không public |
 | `ingest` | MQTT → validate → PostgreSQL | Không public |
 | `api` | FastAPI và MQTT command client | `8000` |
 | `web` | Vue/Vite dashboard | `5173` |
-| `mock-pi` | Dữ liệu mô phỏng, profile `mock` | Không public |
 
 ## 1. Chuẩn bị
 
@@ -29,34 +29,33 @@ Các biến:
 | Biến | Dùng cho | Ghi chú |
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | PostgreSQL/API/ingest | Đổi trước lần chạy đầu |
-| `MQTT_USERNAME` | Broker, API, ingest, Pi/mock | Local đang dùng một tài khoản chung |
-| `MQTT_PASSWORD` | MQTT | Phải khớp file `.env` trên Pi |
-| `MOCK_DEVICE_ID` | Mock publisher | Mặc định `pi-watch-mock-001` |
+| `MQTT_USERNAME`, `MQTT_PASSWORD` | Tài khoản MQTT của backend (API, ingest) | Chỉ đọc dữ liệu thiết bị, chỉ ghi commands/config; không dùng trên Pi |
+| `MQTT_DEVICES` | Broker, API, ingest | `id:mat_khau` cho từng Pi thật, cách nhau dấu phẩy. Pi dùng `MQTT_USERNAME=id` và mật khẩu đó |
+| `LOCAL_TIMEZONE` | API | Múi giờ chia số bước theo ngày, mặc định `Asia/Ho_Chi_Minh` |
 
 `.env` được Git bỏ qua. `.env.example` chỉ chứa giá trị demo.
 
-## 2. Chạy bằng mock data
+## 2. Chạy stack và kết nối Pi thật
 
 ```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock up --build -d
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock ps
-```
-
-Mở <http://localhost:5173> và <http://localhost:8000/docs>. Mock gửi
-telemetry/event nhưng không mô phỏng GPIO, command hoặc `alert-state`; công
-tắc còi sẽ không hoạt động với mock.
-
-## 3. Chạy với Pi thật
-
-```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml ps
 ```
 
-Pi dùng IP LAN của máy tính ở `MQTT_HOST`; không dùng `localhost`. Cho phép
+Pi dùng IP LAN của máy tính ở `MQTT_HOST`, không dùng `localhost`. Cho phép
 TCP `1883` trên Windows Firewall profile Private. Android cần TCP `8000`;
-máy khác mở web cần TCP `5173`.
+máy khác mở web cần TCP `5173`. Dashboard trống cho tới khi Pi gửi dữ liệu.
+
+**Nâng cấp từ bản có mock:** container `mock-pi` cũ (nếu còn) không còn trong compose.
+Chạy `docker compose ... up -d --remove-orphans` để xóa nó. Migration `0002` xóa dữ
+liệu của thiết bị `pi-watch-mock-*` và `smoke-*` trong DB.
+
+## 3. Thêm hoặc đổi thiết bị
+
+Thêm `id:mat_khau` vào `MQTT_DEVICES`, rồi chạy
+`docker compose ... up -d --force-recreate mosquitto ingest api`. Trên Pi mới, đặt
+`MQTT_DEVICE_ID=id`, `MQTT_USERNAME=id`, `MQTT_PASSWORD=mat_khau`. Gỡ một Pi khỏi danh
+sách thì broker từ chối kết nối của nó, và API/web không còn hiển thị thiết bị đó.
 
 ## 4. Kiểm tra
 
@@ -66,14 +65,9 @@ Invoke-RestMethod http://localhost:8000/api/v1/devices
 docker compose --env-file infra/local/.env -f infra/local/compose.yaml logs --tail 100 mosquitto ingest api
 ```
 
-Smoke test đầu-cuối:
-
-```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec -T ingest python -m backend.smoke_local
-```
-
-Smoke test tạo một `device_id` tạm, gửi telemetry/event hợp lệ và trùng, gửi
-một payload sai schema, kiểm tra DB/API rồi tự xóa dữ liệu thử.
+Kiểm tra tự động không ghi vào DB thật. Chạy `python -m pytest backend/tests` trên PC;
+test dùng SQLite trong bộ nhớ. Kiểm tra đầu-cuối được làm bằng Pi thật theo
+[tests/integration](../../tests/integration/README.md).
 
 ## 5. Cập nhật sau khi sửa code
 
@@ -115,12 +109,14 @@ tạo volume mới có chủ ý sau khi backup.
 | `localhost:5173` không mở | `docker compose ps`, log `web`, port 5173 bị chiếm |
 | API `503` khi gửi command | Log `api`, kết nối API → Mosquitto |
 | Pi MQTT timeout | IP LAN, cùng mạng, firewall 1883 |
-| MQTT `not authorised` | Username/password Pi khớp `infra/local/.env` |
+| MQTT `not authorised` | Trên Pi: `MQTT_USERNAME` = `MQTT_DEVICE_ID`, mật khẩu khớp `MQTT_DEVICES` |
+| Ingest log `không có trong MQTT_DEVICES` | Thêm ID của Pi vào `MQTT_DEVICES` rồi recreate `mosquitto ingest api` |
+| Ingest log `Rejected ... telemetry` | Pi còn chạy firmware cũ (telemetry v1); triển khai lại `health_watch/` |
 | Thiết bị hiện offline | Pi service, ingest log, telemetry mới hơn 10 giây |
 | Công tắc báo chưa có trạng thái | Pi chưa chạy code `alert-state` mới hoặc API chưa nhận retained state |
 | Web vẫn giao diện cũ | Restart `web`, sau đó `Ctrl+F5` |
 
 ## 8. Bảo mật local
 
-Mosquitto yêu cầu password nhưng chưa dùng TLS/ACL theo thiết bị. API chưa có
-đăng nhập và CORS đang mở. Không port-forward 1883/8000/5173 ra Internet.
+Mosquitto yêu cầu mật khẩu, mỗi Pi một tài khoản, có ACL theo thiết bị; chưa dùng TLS.
+API chưa có đăng nhập và CORS đang mở. Không port-forward 1883/8000/5173 ra Internet.

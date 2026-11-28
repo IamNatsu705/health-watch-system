@@ -26,7 +26,7 @@ Tài liệu này ghi lại cách nối và kiểm tra phần cứng đang đư�
 | TFT reset | 24 | 18 | Reset màn hình |
 | LED xanh | 22 | 15 | Trạng thái bình thường |
 | LED đỏ | 27 | 13 | Cảnh báo |
-| Còi | 17 | 11 | Active-low: mức thấp bật còi |
+| Còi | 5 | 29 | Active-low: mức thấp bật còi; GPIO5 có pull-up lúc boot nên còi không kêu khi khởi động |
 | Nút SOS | 23 | 16 | Dùng pull-up 10 kΩ như mạch hiện tại |
 | 3,3 V | — | 1 hoặc 17 | Nguồn logic/cảm biến tương thích |
 | GND | — | 6/9/14/... | Tất cả module phải chung GND |
@@ -87,10 +87,10 @@ Quan sát theo hướng dẫn của script:
 - cảnh báo: LED đỏ và còi;
 - kết thúc: còi tắt, GPIO trở về trạng thái an toàn.
 
-Nếu còi active-low đang kêu ngoài ý muốn, có thể đưa GPIO17 lên mức cao tạm thời:
+Nếu còi active-low đang kêu ngoài ý muốn, có thể đưa GPIO5 lên mức cao tạm thời:
 
 ```bash
-sudo pinctrl set 17 op dh
+sudo pinctrl set 5 op dh
 ```
 
 Sau khi kiểm tra xong, chạy lại service:
@@ -123,10 +123,11 @@ Dừng bằng `Ctrl+C`, sau đó bật lại service. Không tạo cú ngã th�
 | Chỉ thấy `0x69` | MPU6050 đang kéo AD0 cao; cấu hình/driver phải dùng đúng địa chỉ |
 | Không có `/dev/spidev0.0` | SPI chưa bật hoặc chưa reboot |
 | TFT trắng/đen | Nguồn, CE0, DC25, RESET24, hướng/màu và dây SPI |
-| Còi đảo trạng thái | Xác nhận phần cứng active-low và cấu hình GPIO17 |
+| Còi đảo trạng thái | Xác nhận phần cứng active-low và cấu hình GPIO5 (`BUZZER_GPIO`) |
 | GPIO báo bận | Dừng service và chương trình cũ đang dùng GPIO |
 | BPM luôn `--` | Đặt ngón tay, kiểm tra IR/FIFO, nguồn và độ ổn định; `--` không phải 0 |
-| Số bước/ngã sai | Đây là thuật toán thử nghiệm; thu dữ liệu có đối chiếu trước khi chỉnh ngưỡng |
+| Số bước sai | Kiểm tra log `imu=ok`, `fifo_overflow=0` và mô hình đã nạp; ghi phiên có đếm tay bằng `record_imu.py` ([thu dữ liệu](../data-collection.md)) |
+| Màn hình báo `LỖI CẢM BIẾN` | Kiểm tra dây/nguồn MPU6050; xem `journalctl` dòng `MPU6050 error` |
 
 ## 9. An toàn và hiệu chuẩn
 

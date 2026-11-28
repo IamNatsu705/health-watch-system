@@ -53,11 +53,19 @@ Ví dụ trong mạng đã dùng khi triển khai: `http://172.20.10.11:5173`. K
 
 ## 4. Cách dùng dashboard
 
-1. Chọn thiết bị trong danh sách.
-2. Kiểm tra trạng thái online và thời điểm nhận dữ liệu cuối.
-3. Theo dõi BPM, bước chân, calories, trạng thái ngón tay và các sự kiện.
-4. Trạng thái `--` ở BPM nghĩa là chưa có phép đo hợp lệ, không phải 0 BPM.
-5. Dữ liệu được làm mới định kỳ khoảng 3 giây; nhãn dữ liệu cũ/offline giúp phân biệt số đo mới với số đo lưu trong DB.
+1. Chọn thiết bị trong danh sách. Danh sách chỉ có Pi đã đăng ký (`MQTT_DEVICES`);
+   thiết bị đang gửi dữ liệu được xếp lên đầu, và lựa chọn được nhớ lại.
+2. Kiểm tra trạng thái online và thời điểm server nhận dữ liệu cuối.
+3. **Bước chân**: tổng hôm nay (theo `/steps/daily`), nguồn đếm (AI + phiên bản mô hình,
+   hoặc thuật toán khi Pi chưa nạp mô hình), trạng thái đang đi bộ/nhịp bước, số đếm
+   của phiên hiện tại. Biểu đồ 7 ngày ở bên dưới.
+4. **Quãng đường/kcal**: nhập chiều cao, cân nặng thật (và có thể nhập chiều dài bước tự
+   đo) ở mục **Hồ sơ người đeo**. Chưa có hồ sơ thì hiển thị `--`.
+5. `--` nghĩa là chưa có phép đo/ước tính hợp lệ, không phải 0.
+6. Dữ liệu làm mới khoảng 3 giây. Khi Pi ngừng gửi, các thẻ mờ đi kèm dòng "không gửi
+   dữ liệu mới từ …". Khi API lỗi, số liệu bị xóa khỏi màn hình thay vì đứng yên ở số cũ.
+7. Lỗi cảm biến chuyển động (MPU6050) hiện thành cảnh báo đỏ; khi đó bước chân không
+   được đếm.
 
 ### Công tắc cảnh báo ON/OFF
 
@@ -67,7 +75,7 @@ Công tắc điều khiển LED đỏ và còi trên đúng Raspberry Pi đang c
 - **ON**: Pi đã báo trạng thái còi đang bật. Giao diện không gửi thêm lệnh bật trùng.
 - **ON → OFF**: gửi lệnh tắt sớm.
 - Pi tự tắt sau 10 giây mặc định nếu không có lệnh khác; thời lượng tối đa API chấp nhận là 60 giây.
-- Công tắc bị vô hiệu hóa khi thiết bị offline, chưa xác định được trạng thái cảnh báo, đang chờ phản hồi hoặc đang dùng `mock-pi`.
+- Công tắc bị vô hiệu hóa khi thiết bị offline, chưa xác định được trạng thái cảnh báo hoặc đang chờ phản hồi.
 
 Trạng thái trên giao diện là trạng thái Pi xác nhận qua topic `alert-state`, không phải phỏng đoán từ lần bấm gần nhất. Nếu giao diện kẹt ở “đang chờ”, xem mục xử lý lỗi phía dưới.
 
@@ -140,7 +148,9 @@ Kiểm tra thủ công cả web và app:
 | Web báo không gọi được API | `Invoke-RestMethod http://localhost:8000/health`; xem log container `api` |
 | Điện thoại không kết nối | Dùng IP LAN thay vì `localhost`; kiểm tra cùng Wi-Fi và firewall TCP 8000 |
 | Không thấy giao diện mới | `Ctrl+F5`, restart container web; APK phải được build và cài lại |
-| Công tắc bị khóa | Kiểm tra thiết bị online, trạng thái `alert-state`, và không chọn `mock-pi` |
+| Công tắc bị khóa | Kiểm tra thiết bị online và trạng thái `alert-state` |
+| Bước chân/quãng đường hiện `--` | Chưa có dữ liệu v2 hôm nay, hoặc chưa nhập hồ sơ người đeo (quãng đường/kcal) |
+| Thẻ số đo bị mờ, ghi "Dữ liệu cũ" | Pi ngừng gửi; số hiển thị là lần đo cuối, không phải hiện tại |
 | Công tắc chờ quá lâu | Xem log API, Mosquitto và `journalctl -u health-watch`; kiểm tra credential MQTT |
 | Pi đã tắt nhưng web vẫn ON | Kiểm tra Pi có publish retained `alert-state` và API có kết nối MQTT hay không |
 

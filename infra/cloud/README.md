@@ -79,7 +79,7 @@ mới, không sửa âm thầm payload đang dùng.
 1. Tạo staging cloud với dữ liệu giả.
 2. Thêm TLS/ACL MQTT và credential riêng cho một Pi thử nghiệm.
 3. Thêm bảng user/device assignment và auth API.
-4. Chạy migration, backup/restore drill và smoke test.
+4. Chạy migration, backup/restore drill và kiểm tra đầu-cuối bằng Pi thật.
 5. Build web production và APK/AAB release ký chính thức.
 6. Thử mất mạng, reconnect, duplicate QoS 1, clock lệch và command timeout.
 7. Chỉ sau đó mới đưa thiết bị thật lên production.

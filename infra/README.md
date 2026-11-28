@@ -5,7 +5,7 @@ Raspberry Pi.
 
 | Thư mục | Trạng thái | Mục đích |
 | --- | --- | --- |
-| [`local/`](local/README.md) | Đã triển khai | Docker Compose cho Mosquitto, PostgreSQL, ingest, API, web và mock Pi |
+| [`local/`](local/README.md) | Đã triển khai | Docker Compose cho Mosquitto (ACL theo thiết bị), PostgreSQL, ingest, API và web |
 | [`cloud/`](cloud/README.md) | Tài liệu thiết kế | Checklist và kiến trúc mục tiêu khi đưa server lên cloud |
 
 Pi chỉ cần địa chỉ broker, port, username/password và `device_id` trong

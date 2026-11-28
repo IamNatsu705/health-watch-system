@@ -1,42 +1,33 @@
 # Kiểm tra tích hợp đầu-cuối
 
-Repo có smoke test local chạy được và một checklist thủ công cho Raspberry Pi thật.
+Kiểm tra đầu-cuối chỉ làm với Raspberry Pi thật, không có thiết bị giả lập. Các
+kiểm tra tự động (schema, chống trùng, từ chối dữ liệu sai) nằm trong `backend/tests`.
 
-## 1. Smoke test tự động với mock
+## 1. Bước chân trên Pi thật
 
-```powershell
-Set-Location C:\Project\health_watch_system
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock up --build -d
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml exec -T ingest python -m backend.smoke_local
-```
-
-Bài test kiểm tra:
-
-1. payload telemetry hợp schema;
-2. ingest ghi PostgreSQL;
-3. API trả latest/history;
-4. publish trùng `(device_id, boot_id, sequence)` không tạo thêm hàng;
-5. event trùng `event_id` không tạo thêm sự kiện;
-6. payload sai bị từ chối và có log phù hợp.
-
-## 2. Tích hợp với Raspberry Pi thật
-
-Trước khi thử, dừng mock:
-
-```powershell
-docker compose --env-file infra/local/.env -f infra/local/compose.yaml --profile mock stop mock-pi
-```
-
-Sau đó:
-
-1. Start `health-watch.service` trên Pi.
+1. Start `health-watch.service` trên Pi. Log có `Đã nạp mô hình walk-gate-rf 1.0.0` và
+   `MPU6050 ok`.
 2. Xác nhận status MQTT online và telemetry tăng sequence.
-3. Kiểm tra ingest ghi đúng `MQTT_DEVICE_ID`.
-4. Kiểm tra API `devices`, `latest`, `history`, `events`.
-5. Mở web và APK, kiểm tra số đo/thời điểm cập nhật thống nhất.
-6. Nhấn SOS có kiểm soát, xác nhận event xuất hiện.
-7. Ngắt broker ngắn: Pi vẫn chạy phần cứng; giao diện chuyển offline/dữ liệu cũ.
-8. Kết nối lại: status/telemetry phục hồi mà không tạo bản ghi trùng.
+3. Kiểm tra ingest ghi đúng `MQTT_DEVICE_ID`. Log không có `Rejected`.
+4. Để thiết bị yên 2 phút: số bước không tăng.
+5. Đeo ở cổ tay, đi 100 bước đếm tay: số bước AI trên TFT/web tăng khoảng 100. Ghi phiên
+   bằng `record_imu.py` để có số liệu chính xác.
+6. Ngồi gõ phím và khua tay 2 phút: số bước AI gần như không tăng.
+7. Thử lỗi cảm biến an toàn: tắt nguồn Pi, tháo dây SDA của MPU6050 rồi bật lại. TFT
+   phải hiện `LỖI CẢM BIẾN`, web hiện cảnh báo IMU, số bước không tăng và chương trình
+   không thoát. Tắt nguồn, cắm lại dây, bật lại: mọi thứ hoạt động bình thường.
+8. Nhập hồ sơ người đeo trên web: TFT/web hiện quãng đường và kcal; xóa hồ sơ thì trở về `--`.
+9. Khởi động lại service: số bước hôm nay trên TFT giữ nguyên; tổng hôm nay trên web
+   không bị đếm lại từ 0.
+
+## 2. Mạng và dữ liệu
+
+1. Kiểm tra API `devices`, `latest`, `history`, `steps/daily`, `events`.
+2. Mở web và APK, kiểm tra số đo/thời điểm cập nhật thống nhất.
+3. Nhấn SOS có kiểm soát, xác nhận event xuất hiện.
+4. Ngắt broker ngắn: Pi vẫn chạy phần cứng; giao diện chuyển offline/dữ liệu cũ (thẻ mờ,
+   ghi rõ tuổi dữ liệu).
+5. Kết nối lại: status/telemetry phục hồi mà không tạo bản ghi trùng.
 
 ## 3. Tích hợp công tắc cảnh báo
 
@@ -49,7 +40,8 @@ Với Pi online:
 5. Gạt ON rồi để yên; Pi tự tắt sau khoảng 10 giây.
 6. Restart API; API phải khôi phục trạng thái từ retained `alert-state`.
 7. Xác nhận command không retained: restart Pi không được tự bật lại từ lệnh cũ.
-8. Xác nhận mock không cho phép điều khiển.
+8. Thử publish vào topic của Pi bằng tài khoản backend hoặc tài khoản Pi khác: broker
+   từ chối (ACL), DB không có dữ liệu mới.
 
 Theo dõi:
 
