@@ -42,12 +42,14 @@ Mục tiêu tối thiểu là **8 người**, mỗi người làm đủ các phi
 | --- | --- | --- | --- |
 | `walk_normal` | 2 × 120 s | Có | Hành lang, đường thẳng |
 | `walk_slow` | 120 s | Có | Chậm như đi dạo |
+| `walk_no_swing` | 120 s | Có | Tay đeo thiết bị không vung: cầm đồ, đút túi, cầm điện thoại |
 | `walk_fast` | 120 s | Có | Nhanh như sắp trễ giờ |
 | `stairs_up`, `stairs_down` | mỗi loại 60 s | Có | Có tay vịn, an toàn |
 | `run` | 60 s | Có | Chạy nhẹ, chỉ người khỏe |
 | `free_living` | 300 s | Có (quay video) | Đi lại trong phòng/nhà, mở tủ, rót nước |
 | `desk_work` | 120 s | 0 | Gõ phím, viết |
 | `gesture_talk` | 120 s | 0 | Nói chuyện có khua tay |
+| `arm_swing_stand` | 60 s | 0 | Đứng yên, cố ý vung tay như đang đi (trường hợp dễ đếm khống nhất) |
 | `brush_teeth`, `wash_hands` | mỗi loại 60 s | 0 | Làm động tác thật |
 | `household` | 120 s | 0 | Lau bàn, gấp quần áo tại chỗ |
 | `stand`, `sit` | mỗi loại 60 s | 0 | Đứng, ngồi yên |

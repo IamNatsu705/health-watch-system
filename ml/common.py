@@ -38,11 +38,11 @@ WALKING_LABEL_MIN_STEPS = 3  # cửa sổ 5 s có >=3 bước gán nhãn đượ
 # không đi bộ mới cho nhãn cửa sổ; phiên trộn lẫn (free_living) không có nhãn từng bước nên
 # chỉ dùng để đánh giá tổng số bước, không dùng để huấn luyện (nhãn -1).
 WALKING_ACTIVITIES = {
-    "walk_normal", "walk_slow", "walk_fast", "stairs_up", "stairs_down", "run",
+    "walk_normal", "walk_slow", "walk_fast", "stairs_up", "stairs_down", "run", "walk_no_swing",
 }
 NON_WALKING_ACTIVITIES = {
-    "stand", "sit", "desk_work", "gesture_talk", "brush_teeth", "wash_hands", "household",
-    "motorbike_passenger", "bus_or_car",
+    "stand", "sit", "desk_work", "gesture_talk", "arm_swing_stand", "brush_teeth", "wash_hands",
+    "household", "motorbike_passenger", "bus_or_car",
 }
 UNLABELED = -1
 
