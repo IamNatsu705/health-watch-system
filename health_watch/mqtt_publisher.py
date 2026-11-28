@@ -26,16 +26,38 @@ class BrokerSettings:
     device_id: str
     keepalive: int = 30
     outbox_size: int = 200
+    tls_enabled: bool = False
+    ca_cert: str = ""
+    client_cert: str = ""
+    client_key: str = ""
 
     def validate(self) -> None:
         if not self.host:
             raise ValueError("MQTT_HOST chưa được cấu hình")
-        if not self.username or not self.password:
+        if self.tls_enabled:
+            if not self.ca_cert or not self.client_cert or not self.client_key:
+                raise ValueError(
+                    "MQTT_CA_CERT, MQTT_CLIENT_CERT và MQTT_CLIENT_KEY không được để trống khi bật TLS"
+                )
+        elif not self.username or not self.password:
             raise ValueError("MQTT_USERNAME và MQTT_PASSWORD không được để trống")
         if not 1 <= self.port <= 65535:
             raise ValueError("MQTT_PORT phải nằm trong khoảng 1..65535")
         if self.outbox_size < 10:
             raise ValueError("MQTT_OUTBOX_SIZE phải ít nhất là 10")
+
+
+def configure_client_auth(client, settings: BrokerSettings) -> None:
+    """Cấu hình một trong hai chế độ xác thực: mTLS hoặc username/password."""
+    settings.validate()
+    if settings.tls_enabled:
+        client.tls_set(
+            ca_certs=settings.ca_cert,
+            certfile=settings.client_cert,
+            keyfile=settings.client_key,
+        )
+    else:
+        client.username_pw_set(settings.username, settings.password)
 
 
 @dataclass
@@ -71,7 +93,7 @@ class MqttPublisher:
             mqtt.CallbackAPIVersion.VERSION2,
             client_id=f"health-watch-{settings.device_id}",
         )
-        self.client.username_pw_set(settings.username, settings.password)
+        configure_client_auth(self.client, settings)
         self.client.reconnect_delay_set(min_delay=1, max_delay=30)
         self.client.max_inflight_messages_set(10)
         self.client.on_connect = self._on_connect

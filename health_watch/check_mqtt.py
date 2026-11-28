@@ -2,19 +2,23 @@
 
 import sys
 import threading
-from uuid import uuid4
 
 import paho.mqtt.client as mqtt
 
 from config import (
     MQTT_ENABLED,
+    MQTT_CA_CERT,
+    MQTT_CLIENT_CERT,
+    MQTT_CLIENT_KEY,
+    MQTT_DEVICE_ID,
     MQTT_HOST,
     MQTT_KEEPALIVE_S,
     MQTT_PASSWORD,
     MQTT_PORT,
+    MQTT_TLS_ENABLED,
     MQTT_USERNAME,
 )
-from mqtt_publisher import BrokerSettings
+from mqtt_publisher import BrokerSettings, configure_client_auth
 
 
 def main() -> int:
@@ -27,8 +31,12 @@ def main() -> int:
         port=MQTT_PORT,
         username=MQTT_USERNAME,
         password=MQTT_PASSWORD,
-        device_id="preflight",
+        device_id=MQTT_DEVICE_ID,
         keepalive=MQTT_KEEPALIVE_S,
+        tls_enabled=MQTT_TLS_ENABLED,
+        ca_cert=MQTT_CA_CERT,
+        client_cert=MQTT_CLIENT_CERT,
+        client_key=MQTT_CLIENT_KEY,
     )
     try:
         settings.validate()
@@ -40,9 +48,9 @@ def main() -> int:
     outcome = {"ok": False, "reason": "hết thời gian chờ"}
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
-        client_id=f"health-watch-preflight-{uuid4().hex[:8]}",
+        client_id=f"health-watch-{MQTT_DEVICE_ID}",
     )
-    client.username_pw_set(settings.username, settings.password)
+    configure_client_auth(client, settings)
 
     def on_connect(client, userdata, flags, reason_code, properties):
         outcome["ok"] = not reason_code.is_failure
@@ -53,8 +61,14 @@ def main() -> int:
         outcome["reason"] = "không mở được kết nối TCP tới broker"
         finished.set()
 
+    def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+        if not outcome["ok"] and not finished.is_set():
+            outcome["reason"] = f"broker đóng kết nối trước CONNACK ({reason_code})"
+            finished.set()
+
     client.on_connect = on_connect
     client.on_connect_fail = on_connect_fail
+    client.on_disconnect = on_disconnect
     client.connect_async(settings.host, settings.port, settings.keepalive)
     client.loop_start()
     try:

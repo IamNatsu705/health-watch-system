@@ -66,17 +66,12 @@ Nếu `pi.local` không phân giải được, dùng IP của Pi, ví dụ
 sao lưu source cũ trong `backups/`, và **giữ nguyên** `.env` cùng `.venv` trên
 Pi. Nó không chép `backend/`, `web/`, `infra/`, APK, cache hoặc secret lên Pi.
 
-Nếu muốn chạy SCP thủ công, tạo thư mục đích trước rồi chép theo chiều
-Windows → Pi. Không dùng `scp -r .\health_watch` nếu thư mục Windows có
-`.env` hoặc `.venv`:
+Script triển khai chép đủ `inference/`, `models/` và các module khác cần chạy.
+Không chép nguyên thư mục `health_watch/` bằng `scp -r`, vì thư mục local có thể
+chứa `.env` hoặc `.venv` không dùng được trên Pi.
 
-```powershell
-ssh pi@pi.local "mkdir -p /home/pi/projects/health_watch"
-scp .\health_watch\main.py .\health_watch\config.py .\health_watch\alerts.py .\health_watch\screen.py .\health_watch\telemetry.py .\health_watch\mqtt_publisher.py .\health_watch\check_i2c.py .\health_watch\check_alerts.py .\health_watch\check_mqtt.py .\health_watch\requirements.txt .\health_watch\.env.example .\health_watch\run.sh pi@pi.local:/home/pi/projects/health_watch/
-scp -r .\health_watch\sensors .\health_watch\processing .\health_watch\tests .\health_watch\deploy pi@pi.local:/home/pi/projects/health_watch/
-```
-
-Nếu username không phải `pi`, truyền thêm `-PiUser <username>` cho script.
+Nếu username không phải `pi`, truyền cả `-PiUser <username>` và
+`-RemoteDir /home/<username>/projects/health_watch` cho script.
 Đường dẫn mặc định trên Pi là `/home/pi/projects/health_watch`.
 
 ## Chuẩn bị trên Pi 4, Debian 13 (Trixie)

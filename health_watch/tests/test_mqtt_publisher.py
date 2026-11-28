@@ -44,6 +44,9 @@ class FakeClient:
     def username_pw_set(self, username, password):
         self.credentials = (username, password)
 
+    def tls_set(self, **kwargs):
+        self.tls = kwargs
+
     def reconnect_delay_set(self, min_delay, max_delay):
         pass
 
@@ -165,6 +168,44 @@ class MqttPublisherTests(unittest.TestCase):
         settings = BrokerSettings(
             host="broker", port=1883, username="device", password="",
             device_id="pi-test",
+        )
+        with self.assertRaises(ValueError):
+            settings.validate()
+
+    def test_aws_tls_uses_client_certificate_without_password(self):
+        fake = FakeClient()
+        settings = BrokerSettings(
+            host="example-ats.iot.ap-southeast-2.amazonaws.com",
+            port=8883,
+            username="",
+            password="",
+            device_id="pi-test",
+            tls_enabled=True,
+            ca_cert="/certs/AmazonRootCA1.pem",
+            client_cert="/certs/device.cert.pem",
+            client_key="/certs/device.private.key",
+        )
+        with patch("mqtt_publisher.mqtt.Client", return_value=fake):
+            MqttPublisher(settings, {"state": "online"}, {"state": "offline"})
+
+        self.assertEqual(fake.tls, {
+            "ca_certs": "/certs/AmazonRootCA1.pem",
+            "certfile": "/certs/device.cert.pem",
+            "keyfile": "/certs/device.private.key",
+        })
+        self.assertFalse(hasattr(fake, "credentials"))
+
+    def test_aws_tls_rejects_missing_certificate_path(self):
+        settings = BrokerSettings(
+            host="example-ats.iot.ap-southeast-2.amazonaws.com",
+            port=8883,
+            username="",
+            password="",
+            device_id="pi-test",
+            tls_enabled=True,
+            ca_cert="/certs/AmazonRootCA1.pem",
+            client_cert="/certs/device.cert.pem",
+            client_key="",
         )
         with self.assertRaises(ValueError):
             settings.validate()

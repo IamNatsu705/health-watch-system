@@ -56,20 +56,33 @@ powershell -ExecutionPolicy Bypass -File .\scripts\deploy_pi.ps1 -PiHost 172.20.
 ssh pi@pi.local
 cd /home/pi/projects/health_watch
 bash deploy/pi/setup.sh
+sudo reboot
+```
+
+Sau khi Pi khởi động lại, đăng nhập SSH và cấu hình MQTT:
+
+```bash
+cd /home/pi/projects/health_watch
 cp -n .env.example .env
 nano .env
+chmod 600 .env
 ```
 
-Đặt ít nhất:
+Trên Windows, khai báo `MQTT_DEVICES=pi-watch-001:<mật_khẩu_riêng>` trong
+`infra/local/.env`. Trên Pi, đặt các giá trị tương ứng (thay IP bằng địa chỉ LAN
+của máy Windows):
 
 ```dotenv
+MQTT_ENABLED=1
 MQTT_HOST=172.20.10.11
 MQTT_PORT=1883
-MQTT_USERNAME=<giống infra/local/.env>
-MQTT_PASSWORD=<giống infra/local/.env>
-MQTT_DEVICE_ID=pi-01
+MQTT_DEVICE_ID=pi-watch-001
+MQTT_USERNAME=pi-watch-001
+MQTT_PASSWORD=<mật_khẩu_riêng>
 ```
 
+`MQTT_USERNAME` trên Pi phải trùng `MQTT_DEVICE_ID`. Không dùng tài khoản
+`MQTT_USERNAME`/`MQTT_PASSWORD` dành cho backend trong `infra/local/.env`.
 Không copy `.venv` từ Windows sang Pi. Script setup tạo môi trường Python đúng kiến trúc ARM.
 
 ## 4. Preflight trên Pi

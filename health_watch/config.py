@@ -16,7 +16,7 @@ DISPLAY_ROTATION = 180  # Màn hình đang lắp ngược chiều nhìn.
 
 GREEN_LED_GPIO = 22
 RED_LED_GPIO = 27
-BUZZER_GPIO = 5 # MH-FMD kích mức cao để còi ko kêu khi boot.
+BUZZER_GPIO = 5  # MH-FMD kích mức thấp; pull-up giữ còi tắt khi boot.
 SOS_BUTTON_GPIO = 23  # Nút nối GPIO23 với GND, dùng pull-up nội bộ.
 
 # Sau khi phát hiện ngã: LED đỏ + còi bíp, người đeo có FALL_CANCEL_WINDOW_S giây để bấm nút
@@ -51,6 +51,12 @@ MQTT_DEVICE_ID = os.environ.get("MQTT_DEVICE_ID", socket.gethostname()).strip()
 # Broker cấp tài khoản riêng cho từng thiết bị, tên đăng nhập = device_id (ACL %u).
 MQTT_USERNAME = os.environ.get("MQTT_USERNAME", MQTT_DEVICE_ID).strip()
 MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "")
+MQTT_TLS_ENABLED = os.environ.get("MQTT_TLS_ENABLED", "0").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+MQTT_CA_CERT = os.environ.get("MQTT_CA_CERT", "").strip()
+MQTT_CLIENT_CERT = os.environ.get("MQTT_CLIENT_CERT", "").strip()
+MQTT_CLIENT_KEY = os.environ.get("MQTT_CLIENT_KEY", "").strip()
 MQTT_PUBLISH_INTERVAL_S = float(os.environ.get("MQTT_PUBLISH_INTERVAL_S", "1.0"))
 MQTT_KEEPALIVE_S = int(os.environ.get("MQTT_KEEPALIVE_S", "30"))
 MQTT_OUTBOX_SIZE = int(os.environ.get("MQTT_OUTBOX_SIZE", "200"))

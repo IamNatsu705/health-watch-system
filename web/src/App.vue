@@ -17,6 +17,8 @@ const profileSaving = ref(false)
 const profileMessage = ref('')
 const profileError = ref(false)
 let refreshToken = 0
+let refreshRunning = false
+let refreshQueued = false
 let weekFetchedAt = 0
 const WEEK_REFRESH_MS = 60000  // biểu đồ 7 ngày làm mới mỗi phút; số hôm nay làm mới mỗi lần tải
 const error = ref('')
@@ -56,6 +58,7 @@ function sessionId() {
 }
 
 function logActivity(action, deviceId = null) {
+  if (import.meta.env.VITE_ACTIVITY_LOGGING_ENABLED !== 'true') return
   api.activity({ session_id: sessionId(), action, device_id: deviceId }).catch(() => {})
 }
 
@@ -196,6 +199,11 @@ async function loadProfile(id) {
 }
 
 async function refresh() {
+  if (refreshRunning) {
+    refreshQueued = true
+    return
+  }
+  refreshRunning = true
   const token = ++refreshToken
   try {
     const list = await api.devices()
@@ -242,6 +250,11 @@ async function refresh() {
     clearDeviceData()
   } finally {
     if (token === refreshToken) loading.value = false
+    refreshRunning = false
+    if (refreshQueued) {
+      refreshQueued = false
+      void refresh()
+    }
   }
 }
 

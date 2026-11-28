@@ -21,12 +21,16 @@ from config import (
     MAX30102_SAMPLES_PER_SECOND,
     MQTT_DEVICE_ID,
     MQTT_ENABLED,
+    MQTT_CA_CERT,
+    MQTT_CLIENT_CERT,
+    MQTT_CLIENT_KEY,
     MQTT_HOST,
     MQTT_KEEPALIVE_S,
     MQTT_OUTBOX_SIZE,
     MQTT_PASSWORD,
     MQTT_PORT,
     MQTT_PUBLISH_INTERVAL_S,
+    MQTT_TLS_ENABLED,
     MQTT_USERNAME,
     MPU6050_ADDRESS,
     PPG_CSV_LOG,
@@ -75,7 +79,7 @@ def main() -> None:
         if MQTT_ENABLED:
             if MQTT_PUBLISH_INTERVAL_S <= 0:
                 raise ValueError("MQTT_PUBLISH_INTERVAL_S phải lớn hơn 0")
-            if MQTT_USERNAME != MQTT_DEVICE_ID:
+            if not MQTT_TLS_ENABLED and MQTT_USERNAME != MQTT_DEVICE_ID:
                 log.warning("MQTT_USERNAME (%s) khác MQTT_DEVICE_ID (%s): broker sẽ từ chối "
                             "dữ liệu vì mỗi thiết bị chỉ được ghi vào topic của chính nó",
                             MQTT_USERNAME, MQTT_DEVICE_ID)
@@ -89,6 +93,10 @@ def main() -> None:
                     device_id=messages.device_id,
                     keepalive=MQTT_KEEPALIVE_S,
                     outbox_size=MQTT_OUTBOX_SIZE,
+                    tls_enabled=MQTT_TLS_ENABLED,
+                    ca_cert=MQTT_CA_CERT,
+                    client_cert=MQTT_CLIENT_CERT,
+                    client_key=MQTT_CLIENT_KEY,
                 ),
                 online_status=messages.status("online"),
                 offline_status=messages.status("offline"),
