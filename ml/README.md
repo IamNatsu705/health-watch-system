@@ -90,6 +90,23 @@ hoạt tự do.
 | Lộn xộn (trong phòng, bước ngắn, xoay người) | 48,6% | 24,0% | 37,8% (đếm dư) |
 | Tất cả 90 phiên | 29,0% | 19,6% | **17,7%** |
 
+### Biểu đồ so sánh không AI và có AI
+
+Chạy lại được bằng `python ml/plot_comparison.py --oxwalk ... --clemson ...`. Script ghi PNG
+và CSV (số liệu gốc của từng hình) vào `docs/figures/`, đồng thời ghi
+`web/src/data/step_evaluation.json` cho mục **"Có AI và không AI"** trên dashboard. Số của AI
+trên OxWalk luôn lấy từ đánh giá chéo: mỗi người được đếm bằng mô hình chưa từng thấy
+người đó.
+
+![Sai số theo bộ dữ liệu](../docs/figures/steps_error_summary.png)
+
+![Từng người trong OxWalk](../docs/figures/steps_per_person_oxwalk.png)
+
+![Ví dụ 60 giây](../docs/figures/steps_examples.png)
+
+Trong ví dụ "cử động tay, không bước nào", mô hình chưa thấy người này vẫn đếm khống 16
+bước, ít hơn nhiều so với 49 bước (thuật toán mới, không AI) và 77 bước (thuật toán cũ).
+
 ## 5. Giới hạn cần nói rõ
 
 - **Chưa đánh giá trên MPU6050 của nhóm.** Mọi con số trên đo bằng cảm biến AX3

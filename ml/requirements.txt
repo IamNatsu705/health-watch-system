@@ -1,3 +1,4 @@
 # Chỉ cài trên máy tính để huấn luyện/đánh giá; Pi không cần các gói này.
 numpy>=2.0
 scikit-learn>=1.5
+matplotlib>=3.8   # chỉ cho ml/plot_comparison.py

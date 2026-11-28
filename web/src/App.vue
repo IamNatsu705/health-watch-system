@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, getApiBase, isNativeApp, setApiBase } from './api'
+import StepComparison from './StepComparison.vue'
 
 const DEVICE_KEY = 'health-watch-device'
 const devices = ref([])
@@ -136,7 +137,7 @@ const alertStateLabel = computed(() => {
   return sources[remoteAlert.value.source] || 'Còi đang bật'
 })
 const heartPoints = computed(() => {
-  const valid = history.value.filter(item => item.heart_rate_bpm !== null)
+  const valid = history.value.slice(-45).filter(item => item.heart_rate_bpm !== null)
   if (valid.length < 2) return ''
   const low = Math.min(...valid.map(item => item.heart_rate_bpm)) - 5
   const high = Math.max(...valid.map(item => item.heart_rate_bpm)) + 5
@@ -435,6 +436,8 @@ onUnmounted(() => clearInterval(timer))
           <p>{{ profile ? 'Năng lượng vận động ước tính theo phương trình ACSM (đi 0,5 / chạy 1,0 kcal/kg/km)' : 'Cần cân nặng thật để ước tính' }}</p>
         </article>
       </section>
+
+      <StepComparison :daily="daily" :history="history" :current="current" :fresh="isFresh" />
 
       <section class="lower-grid steps-grid">
         <article class="panel">

@@ -1,0 +1,39 @@
+.compare-panel { margin-top: 20px; background: #142331; border: 1px solid #294050; border-radius: 20px; padding: 25px; }
+.compare-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.compare-head h2 { font: 800 19px 'Manrope', sans-serif; margin: 0; }
+.compare-toggle { border: 1px solid #345063; background: #0d1a26; color: #cfe3ea; border-radius: 10px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+.compare-block { margin-top: 22px; padding-top: 18px; border-top: 1px solid #2a3d4b; }
+.compare-block h3 { margin: 0 0 12px; font-size: 14px; color: #e2ecf1; }
+.compare-tiles { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 12px; margin-bottom: 14px; }
+.compare-tile { position: relative; background: #0f1c28; border-radius: 14px; padding: 14px 16px; }
+.compare-tile small { display: block; color: #8fa4b2; font-size: 11px; margin-bottom: 4px; }
+.compare-tile strong { font: 800 26px 'Manrope', sans-serif; color: #e9f1f7; }
+.compare-tile.wide strong { font-size: 20px; }
+.compare-tile p { margin: 6px 0 0; color: #849ba9; font-size: 12px; }
+.compare-tile .swatch { position: absolute; top: 14px; right: 14px; width: 10px; height: 10px; border-radius: 3px; }
+.compare-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.compare-panel figure { margin: 0 0 6px; min-width: 0; }
+.compare-panel figcaption { color: #a9bdc9; font-size: 12px; margin-bottom: 6px; }
+.compare-note { color: #6f8999; font-size: 11px; line-height: 1.5; margin: 8px 0 0; }
+.compare-note code { color: #9fc3cf; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 4px; color: #a9bdc9; font-size: 11px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 4px; border-radius: 2px; border: 0 solid transparent; }
+.legend i.dashed { height: 0; border-top: 2px dashed; border-radius: 0; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .grid line { stroke: #22384a; stroke-width: 1; }
+.chart .axis text, .chart .ends text { fill: #8fa4b2; font-size: 10px; }
+.chart .axis .axis-sub { fill: #6f8999; font-size: 9px; }
+.chart .bar-label { fill: #e2ecf1; font-size: 10px; }
+.chart .crosshair { stroke: #8fa4b2; stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-empty { color: #6f8999; font-size: 12px; padding: 30px 0; text-align: center; margin: 0; }
+.chart-tip { position: absolute; top: 4px; transform: translateX(-50%); pointer-events: none; background: #0b1420; border: 1px solid #345063; border-radius: 10px; padding: 8px 10px; font-size: 11px; color: #cfe3ea; display: grid; gap: 3px; white-space: nowrap; z-index: 2; box-shadow: 0 8px 20px #0006; }
+.chart-tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.chart-tip b { color: #ffffff; }
+@media (max-width: 800px) {
+  .compare-tiles { grid-template-columns: 1fr 1fr; }
+  .compare-tile.wide { grid-column: span 2; }
+  .compare-charts { grid-template-columns: 1fr; }
+  .compare-panel { padding: 18px; }
+}

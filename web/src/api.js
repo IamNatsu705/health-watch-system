@@ -31,7 +31,7 @@ async function request(path, options = {}) {
 export const api = {
   devices: () => request('/api/v1/devices'),
   latest: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/latest`),
-  history: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/history?limit=45`),
+  history: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/history?limit=180`),
   events: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/events?limit=8`),
   dailySteps: (id, days = 7) => request(`/api/v1/devices/${encodeURIComponent(id)}/steps/daily?days=${days}`),
   profile: (id) => request(`/api/v1/devices/${encodeURIComponent(id)}/profile`),

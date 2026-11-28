@@ -147,11 +147,12 @@ def subset(table, mask) -> dict:
     return {k: table[k][mask] for k in keys}
 
 
-def nested_evaluation(table, folds: int) -> dict:
-    """Vòng ngoài: người kiểm tra không tham gia chọn ngưỡng hay huấn luyện."""
+def nested_predictions(table, folds: int) -> dict:
+    """Đánh giá chéo lồng nhau theo người: với mỗi người kiểm tra, mô hình và ngưỡng được
+    huấn luyện/chọn chỉ bằng dữ liệu của những người khác."""
     outer_probabilities = np.zeros(len(table["X"]))
     outer_threshold = np.zeros(len(table["X"]))
-    chosen = []
+    chosen, fold_models, fold_subjects = [], [], []
     splitter = GroupKFold(n_splits=folds)
     for train, test in splitter.split(table["X"], table["label"], table["subject"]):
         inner = subset(table, np.isin(np.arange(len(table["X"])), train))
@@ -163,7 +164,17 @@ def nested_evaluation(table, folds: int) -> dict:
         model = fit_labeled(table["X"][train], table["label"][train])
         outer_probabilities[test] = model.predict_proba(table["X"][test])[:, 1]
         outer_threshold[test] = threshold
-    walking = outer_probabilities >= outer_threshold
+        fold_models.append((model, threshold))
+        fold_subjects.append(set(table["subject"][test]))
+    return {"walking": outer_probabilities >= outer_threshold, "thresholds": chosen,
+            "fold_models": fold_models, "fold_subjects": fold_subjects}
+
+
+def nested_evaluation(table, folds: int, nested: dict | None = None) -> dict:
+    """Vòng ngoài: người kiểm tra không tham gia chọn ngưỡng hay huấn luyện."""
+    nested = nested or nested_predictions(table, folds)
+    walking = nested["walking"]
+    chosen = nested["thresholds"]
     predicted = np.where(walking, table["candidates"], 0)
     rows = session_rows(table, predicted, table["sessions"])
     labeled = table["label"] >= 0
@@ -174,6 +185,24 @@ def nested_evaluation(table, folds: int) -> dict:
         "window_balanced_accuracy": round(float(balanced_accuracy_score(table["label"][labeled], walking[labeled])), 3),
         "ai": score(rows, "ai"),
         "algorithm": score(rows, "algorithm"),
+    }
+
+
+def gate_document(model: RandomForestClassifier, threshold: float, version: str, extra: dict | None = None) -> dict:
+    """Tài liệu JSON đúng định dạng WalkGate trên Pi."""
+    return {
+        "format": MODEL_FORMAT,
+        "model_name": MODEL_NAME,
+        "model_version": version,
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "feature_version": FEATURE_VERSION,
+        "feature_names": list(GATE_INPUT_NAMES),
+        "window_s": WINDOW_S,
+        "sample_rate_hz": 100.0,
+        "threshold": float(threshold),
+        "step_algorithm": ALGORITHM_NAME,
+        **(extra or {}),
+        "trees": export_forest(model),
     }
 
 
@@ -248,17 +277,7 @@ def main():
     threshold = best_threshold(table, cross_validated_probabilities(table, all_index, args.folds),
                                table["sessions"])
     model = fit_labeled(table["X"], table["label"])
-    document = {
-        "format": MODEL_FORMAT,
-        "model_name": MODEL_NAME,
-        "model_version": args.version,
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "feature_version": FEATURE_VERSION,
-        "feature_names": list(GATE_INPUT_NAMES),
-        "window_s": WINDOW_S,
-        "sample_rate_hz": 100.0,
-        "threshold": threshold,
-        "step_algorithm": ALGORITHM_NAME,
+    document = gate_document(model, threshold, args.version, {
         "training_data": {
             "datasets": datasets,
             "windows": int(labeled.sum()),
@@ -267,8 +286,7 @@ def main():
                       "(bỏ cửa sổ đầu/cuối), thuần không đi bộ = 0; free_living chỉ dùng để đánh giá"),
         },
         "evaluation": evaluation,
-        "trees": export_forest(model),
-    }
+    })
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
