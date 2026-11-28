@@ -69,9 +69,12 @@ def render_dashboard(steps, pulse, alert_state: str, now=None):
 
     draw.rounded_rectangle((2, 2, 237, 277), radius=18, outline=(36, 64, 78), width=2)
     draw.text((13, 9), now.strftime("%H:%M:%S"), font=FONT_LABEL, fill=WHITE)
-    draw.rounded_rectangle((174, 8, 223, 27), radius=8, outline=GREEN, width=1)
-    draw.ellipse((181, 14, 187, 20), fill=GREEN)
-    draw.text((191, 12), "LIVE", font=FONT_SMALL, fill=GREEN)
+    # Huy hiệu phản ánh tình trạng thật của cảm biến chuyển động, không luôn xanh.
+    badge_color = GREEN if steps.imu_ok else RED
+    badge_text = "LIVE" if steps.imu_ok else "IMU!"
+    draw.rounded_rectangle((174, 8, 223, 27), radius=8, outline=badge_color, width=1)
+    draw.ellipse((181, 14, 187, 20), fill=badge_color)
+    draw.text((191, 12), badge_text, font=FONT_SMALL, fill=badge_color)
 
     draw.rounded_rectangle((9, 43, 230, 114), radius=10, fill=CARD, outline=CYAN, width=2)
     draw.ellipse((20, 66, 48, 94), outline=RED, width=2)
@@ -99,12 +102,19 @@ def render_dashboard(steps, pulse, alert_state: str, now=None):
     draw.ellipse((31, 160, 40, 167), fill=CYAN)
     draw.rounded_rectangle((21, 162, 29, 176), radius=3, fill=CYAN)
     draw.rounded_rectangle((31, 168, 39, 182), radius=3, fill=CYAN)
-    draw.text((55, 137), "BƯỚC CHÂN", font=FONT_LABEL, fill=WHITE)
-    draw.text((55, 156), str(steps.steps), font=FONT_VALUE, fill=CYAN)
-    draw.text((160, 164), "bước", font=FONT_SMALL, fill=MUTED)
+    draw.text((55, 137), "BƯỚC HÔM NAY", font=FONT_LABEL, fill=WHITE)
+    draw.text((176, 138), steps.source_label, font=FONT_SMALL, fill=MUTED)
+    if steps.imu_ok:
+        draw.text((55, 156), str(steps.steps), font=FONT_VALUE, fill=CYAN)
+        draw.text((160, 164), "bước", font=FONT_SMALL, fill=MUTED)
+    else:
+        # Không hiển thị số như thể vẫn đang đếm khi cảm biến lỗi.
+        draw.text((55, 160), "LỖI CẢM BIẾN", font=FONT_STATUS, fill=RED)
     draw.line((55, 186, 218, 186), fill=(34, 70, 82), width=1)
-    draw.text((55, 188), f"{steps.distance_km:.3f} km", font=FONT_SMALL, fill=WHITE)
-    draw.text((150, 188), f"{steps.calories_kcal:.2f} kcal~", font=FONT_SMALL, fill=GREEN)
+    distance = "--" if steps.distance_km is None else f"{steps.distance_km:.2f}"
+    calories = "--" if steps.calories_kcal is None else f"{steps.calories_kcal:.0f}"
+    draw.text((55, 188), f"{distance} km~", font=FONT_SMALL, fill=WHITE)
+    draw.text((150, 188), f"{calories} kcal~", font=FONT_SMALL, fill=GREEN)
 
     accent = RED if alert_state else GREEN
     draw.rounded_rectangle((9, 223, 230, 266), radius=10, fill=CARD, outline=accent, width=2)

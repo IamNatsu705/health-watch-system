@@ -19,12 +19,13 @@ RED_LED_GPIO = 27
 BUZZER_GPIO = 5 # MH-FMD kích mức cao để còi ko kêu khi boot.
 SOS_BUTTON_GPIO = 23  # Nút nối GPIO23 với GND, dùng pull-up nội bộ.
 
-# Chỉ là giá trị mẫu cho phần ước tính vận động; sửa theo người thử.
-STEP_LENGTH_M = 0.70
-WEIGHT_KG = 70.0
+# Chiều cao/cân nặng không đặt cứng ở đây: người dùng nhập trên web/app, backend
+# gửi qua topic MQTT `config`, Pi lưu ở state/profile.json. Chưa có hồ sơ thì
+# quãng đường/kcal hiển thị "--" thay vì dùng số mẫu.
 
+# Vòng lặp chính 40 ms; MPU6050 tự lấy mẫu 100 Hz vào FIFO nên vẽ TFT không làm mất mẫu.
 SAMPLE_INTERVAL_S = 0.04
-SCREEN_INTERVAL_S = 0.5
+SCREEN_INTERVAL_S = 1.0
 I2C_READ_ATTEMPTS = 3
 
 # MQTT lấy từ biến môi trường để không ghi mật khẩu vào mã nguồn. Mặc định
@@ -32,9 +33,10 @@ I2C_READ_ATTEMPTS = 3
 MQTT_ENABLED = os.environ.get("MQTT_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 MQTT_HOST = os.environ.get("MQTT_HOST", "").strip()
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
-MQTT_USERNAME = os.environ.get("MQTT_USERNAME", "health_watch")
-MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "")
 MQTT_DEVICE_ID = os.environ.get("MQTT_DEVICE_ID", socket.gethostname()).strip()
+# Broker cấp tài khoản riêng cho từng thiết bị, tên đăng nhập = device_id (ACL %u).
+MQTT_USERNAME = os.environ.get("MQTT_USERNAME", MQTT_DEVICE_ID).strip()
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "")
 MQTT_PUBLISH_INTERVAL_S = float(os.environ.get("MQTT_PUBLISH_INTERVAL_S", "1.0"))
 MQTT_KEEPALIVE_S = int(os.environ.get("MQTT_KEEPALIVE_S", "30"))
 MQTT_OUTBOX_SIZE = int(os.environ.get("MQTT_OUTBOX_SIZE", "200"))

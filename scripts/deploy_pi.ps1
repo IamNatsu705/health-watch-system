@@ -35,6 +35,10 @@ $rootNames = @(
     "screen.py",
     "telemetry.py",
     "mqtt_publisher.py",
+    "user_profile.py",
+    "storage.py",
+    "clock.py",
+    "record_imu.py",
     "check_i2c.py",
     "check_alerts.py",
     "check_mqtt.py",
@@ -43,7 +47,7 @@ $rootNames = @(
     ".env.example",
     "run.sh"
 )
-$directoryNames = @("sensors", "processing", "tests", "deploy")
+$directoryNames = @("sensors", "processing", "inference", "models", "tests", "deploy")
 $sources = @()
 
 foreach ($name in $rootNames) {
@@ -74,7 +78,7 @@ function Invoke-NativeChecked {
 
 Write-Host "1/3 Kết nối Pi và sao lưu source hiện tại..." -ForegroundColor Cyan
 $temporaryBackup = "/tmp/health-watch-source-$timestamp.tar.gz"
-$prepare = "set -eu; mkdir -p '$RemoteDir' '$RemoteDir/backups'; if [ -f '$RemoteDir/main.py' ]; then tar --exclude='./.venv' --exclude='./.env' --exclude='./backups' --exclude='*/__pycache__' -czf '$temporaryBackup' -C '$RemoteDir' .; mv '$temporaryBackup' '$RemoteDir/backups/source-$timestamp.tar.gz'; fi"
+$prepare = "set -eu; mkdir -p '$RemoteDir' '$RemoteDir/backups'; if [ -f '$RemoteDir/main.py' ]; then tar --exclude='./.venv' --exclude='./.env' --exclude='./backups' --exclude='./recordings' --exclude='*/__pycache__' -czf '$temporaryBackup' -C '$RemoteDir' .; mv '$temporaryBackup' '$RemoteDir/backups/source-$timestamp.tar.gz'; fi"
 Invoke-NativeChecked -FilePath "ssh" -Arguments @($remoteTarget, $prepare)
 
 Write-Host "2/3 Chép đúng các file chạy trên Pi; giữ nguyên .env và .venv..." -ForegroundColor Cyan
@@ -91,4 +95,4 @@ Write-Host "  cd $RemoteDir"
 Write-Host "  bash deploy/pi/setup.sh"
 Write-Host "  nano .env"
 Write-Host "  ./run.sh"
-Write-Host "Không xóa .venv hoặc .env trên Pi; script này luôn giữ lại hai mục đó."
+Write-Host "Không xóa .venv, .env, state/ (số bước trong ngày, hồ sơ) hoặc recordings/ (dữ liệu ghi) trên Pi; script luôn giữ lại các mục đó."

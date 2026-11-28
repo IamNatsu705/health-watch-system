@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": { "const": 1 },
     "command_id": { "type": "string", "format": "uuid" },
-    "device_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "device_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
     "command_type": { "const": "remote_alert" },
     "active": { "type": "boolean" },
     "duration_s": { "type": "integer", "minimum": 1, "maximum": 60 },

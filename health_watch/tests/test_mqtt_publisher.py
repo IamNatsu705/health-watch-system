@@ -102,6 +102,7 @@ class MqttPublisherTests(unittest.TestCase):
         self.assertEqual(topics.count("health/v1/devices/pi-test/status"), 2)
         self.assertEqual(fake.will[0], "health/v1/devices/pi-test/status")
         self.assertIn(("health/v1/devices/pi-test/commands", 1), fake.subscriptions)
+        self.assertIn(("health/v1/devices/pi-test/config", 1), fake.subscriptions)
 
     def test_accepts_fresh_remote_alert_once(self):
         fake = FakeClient()
@@ -182,6 +183,52 @@ class MqttPublisherTests(unittest.TestCase):
         self.assertEqual(len(states), 1)
         self.assertFalse(states[0].document["buzzer_active"])
         self.assertTrue(states[0].retain)
+
+
+class ProfileConfigTests(unittest.TestCase):
+    def publisher(self):
+        fake = FakeClient()
+        settings = BrokerSettings(host="broker", port=1883, username="pi-test", password="secret",
+                                  device_id="pi-test", outbox_size=10)
+        with patch("mqtt_publisher.mqtt.Client", return_value=fake):
+            return MqttPublisher(settings, {"state": "online"}, {"state": "offline"}), fake
+
+    def config_message(self, document):
+        return SimpleNamespace(topic="health/v1/devices/pi-test/config",
+                               payload=json.dumps(document).encode("utf-8"))
+
+    def test_valid_profile_is_queued(self):
+        publisher, _ = self.publisher()
+        publisher._on_message(None, None, self.config_message({
+            "schema_version": 1, "device_id": "pi-test", "updated_at": "2026-11-28T00:00:00Z",
+            "profile": {"height_cm": 168, "weight_kg": 58.5, "step_length_m": None},
+        }))
+        updates = publisher.pop_profile_updates()
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["profile"].weight_kg, 58.5)
+        self.assertEqual(publisher.pop_commands(), [])
+
+    def test_cleared_profile_and_invalid_profile(self):
+        publisher, _ = self.publisher()
+        base = {"schema_version": 1, "device_id": "pi-test", "updated_at": "2026-11-28T00:00:00Z"}
+        publisher._on_message(None, None, self.config_message({**base, "profile": None}))
+        publisher._on_message(None, None, self.config_message({**base, "profile": {"height_cm": 5, "weight_kg": 60}}))
+        publisher._on_message(None, None, self.config_message({**base, "device_id": "other", "profile": None}))
+        updates = publisher.pop_profile_updates()
+        self.assertEqual(len(updates), 1)
+        self.assertIsNone(updates[0]["profile"])
+
+    def test_stop_flushes_pending_messages_first(self):
+        publisher, fake = self.publisher()
+        publisher.start()
+        for sequence in range(5):
+            publisher.publish_telemetry({"sequence": sequence})
+        publisher.stop()
+        telemetry = [item for item in fake.published if item[0].endswith("/telemetry")]
+        self.assertEqual(len(telemetry), 5)
+        self.assertTrue(fake.published[-1][0].endswith("/status"))
+        publisher.publish_telemetry({"sequence": 99})
+        self.assertEqual(len([i for i in fake.published if i[0].endswith("/telemetry")]), 5)
 
 
 if __name__ == "__main__":

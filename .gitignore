@@ -124,3 +124,9 @@ Desktop.ini
 $RECYCLE.BIN/
 .Spotlight-V100
 .Trashes
+
+# Health Watch runtime state and real recordings (never commit personal sensor data)
+/health_watch/state/
+/health_watch/recordings/
+/ml/cache/
+/ml/data/

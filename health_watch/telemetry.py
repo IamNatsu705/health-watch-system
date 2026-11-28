@@ -1,11 +1,14 @@
-"""Tạo payload MQTT v1 độc lập với phần cứng."""
+"""Tạo payload MQTT (telemetry v2, event/status/alert-state v1) độc lập với phần cứng."""
 
 import re
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
+from processing.steps import ALGORITHM_NAME as STEP_ALGORITHM
 
+SOFTWARE_VERSION = "health-watch-pi/0.2.0"
 EVENT_TYPES = {"fall_detected", "fall_acknowledged", "sos_pressed", "sos_released"}
+IMU_STATUSES = {"starting", "ok", "saturated", "error", "frozen"}
 DEVICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
@@ -32,22 +35,52 @@ class DeviceMessageFactory:
         *,
         heart_rate_bpm: int | None,
         finger_present: bool,
-        steps_session: int,
-        distance_m_session: float,
-        calories_kcal_session: float,
+        imu_status: str,
+        steps_algorithm_session: int,
+        steps_ai_session: int | None,
+        step_model: dict | None,
+        walking: bool | None,
+        walking_probability: float | None,
+        cadence_spm: float | None,
+        distance_m_session: float | None,
+        calories_kcal_session: float | None,
+        distance_basis: dict | None,
+        session_started_at: str,
+        uptime_s: float,
+        clock_synced: bool,
     ) -> dict:
+        if imu_status not in IMU_STATUSES:
+            raise ValueError(f"imu_status không hợp lệ: {imu_status}")
+        if (steps_ai_session is None) != (step_model is None):
+            raise ValueError("steps_ai_session và step_model phải cùng có hoặc cùng không")
+
+        def rounded(value, digits):
+            return None if value is None else round(float(value), digits)
+
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "device_id": self.device_id,
             "boot_id": self.boot_id,
             "sequence": self._next_sequence(),
             "measured_at": utc_now(),
+            "session_started_at": session_started_at,
+            "uptime_s": round(float(uptime_s), 1),
+            "clock_synced": bool(clock_synced),
+            "firmware_version": SOFTWARE_VERSION,
+            "step_algorithm": STEP_ALGORITHM,
+            "step_model": dict(step_model) if step_model else None,
+            "distance_basis": dict(distance_basis) if distance_basis else None,
             "metrics": {
                 "heart_rate_bpm": heart_rate_bpm,
                 "finger_present": bool(finger_present),
-                "steps_session": int(steps_session),
-                "distance_m_session": round(float(distance_m_session), 3),
-                "calories_kcal_session": round(float(calories_kcal_session), 3),
+                "imu_status": imu_status,
+                "steps_algorithm_session": int(steps_algorithm_session),
+                "steps_ai_session": None if steps_ai_session is None else int(steps_ai_session),
+                "walking": None if walking is None else bool(walking),
+                "walking_probability": rounded(walking_probability, 3),
+                "cadence_spm": rounded(cadence_spm, 1),
+                "distance_m_session": rounded(distance_m_session, 1),
+                "calories_kcal_session": rounded(calories_kcal_session, 2),
             },
         }
 
@@ -72,7 +105,7 @@ class DeviceMessageFactory:
             "device_id": self.device_id,
             "boot_id": self.boot_id,
             "state": state,
-            "software_version": "health-watch-pi/0.1.0",
+            "software_version": SOFTWARE_VERSION,
         }
 
     def alert_state(

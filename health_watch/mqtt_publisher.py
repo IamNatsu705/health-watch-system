@@ -11,6 +11,8 @@ from uuid import UUID
 
 import paho.mqtt.client as mqtt
 
+from user_profile import UserProfile
+
 
 log = logging.getLogger("health_watch.mqtt")
 
@@ -56,9 +58,12 @@ class MqttPublisher:
         self._outbox: deque[PendingMessage] = deque()
         self._commands: deque[dict] = deque(maxlen=20)
         self._seen_command_ids: deque[str] = deque(maxlen=100)
+        self._profile_updates: deque[dict] = deque(maxlen=5)
         self._condition = threading.Condition()
         self._connected = False
         self._stopping = False
+        self._accepting = True
+        self._sending = False
         self._started = False
         self._worker = threading.Thread(target=self._send_loop, name="mqtt-outbox", daemon=True)
 
@@ -106,15 +111,19 @@ class MqttPublisher:
         )
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             log.warning("Không xếp được trạng thái online: %s", mqtt.error_string(info.rc))
-        result, _ = client.subscribe(f"{self.base_topic}/commands", qos=1)
-        if result != mqtt.MQTT_ERR_SUCCESS:
-            log.warning("Không đăng ký được topic lệnh: %s", mqtt.error_string(result))
+        for suffix in ("commands", "config"):
+            result, _ = client.subscribe(f"{self.base_topic}/{suffix}", qos=1)
+            if result != mqtt.MQTT_ERR_SUCCESS:
+                log.warning("Không đăng ký được topic %s: %s", suffix, mqtt.error_string(result))
         with self._condition:
             self._connected = True
             self._condition.notify_all()
         log.info("MQTT đã kết nối và gửi trạng thái online")
 
     def _on_message(self, client, userdata, message) -> None:
+        if getattr(message, "topic", f"{self.base_topic}/commands") == f"{self.base_topic}/config":
+            self._on_config(message)
+            return
         try:
             document = json.loads(message.payload.decode("utf-8"))
             command = self._validate_command(document)
@@ -131,6 +140,43 @@ class MqttPublisher:
             self._commands.append(command)
             self._condition.notify_all()
         log.info("Đã nhận lệnh remote_alert active=%s", command["active"])
+
+    def _on_config(self, message) -> None:
+        try:
+            document = json.loads(message.payload.decode("utf-8"))
+            update = self.validate_config(document)
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            log.warning("Bỏ cấu hình MQTT không hợp lệ: %s", exc)
+            return
+        with self._condition:
+            self._profile_updates.append(update)
+        log.info("Đã nhận hồ sơ người đeo từ backend (%s)", "xóa" if update["profile"] is None else "cập nhật")
+
+    def validate_config(self, document: dict) -> dict:
+        if not isinstance(document, dict):
+            raise ValueError("payload phải là object")
+        if document.get("schema_version") != 1:
+            raise ValueError("schema_version không được hỗ trợ")
+        if document.get("device_id") != self.settings.device_id:
+            raise ValueError("device_id không khớp")
+        updated_at = document.get("updated_at")
+        if not isinstance(updated_at, str):
+            raise ValueError("updated_at bị thiếu")
+        raw_profile = document.get("profile")
+        if raw_profile is None:
+            return {"profile": None, "updated_at": updated_at}
+        profile = UserProfile.from_dict({**raw_profile, "updated_at": updated_at})
+        return {"profile": profile, "updated_at": updated_at}
+
+    def pop_profile_updates(self) -> list[dict]:
+        with self._condition:
+            updates = list(self._profile_updates)
+            self._profile_updates.clear()
+        return updates
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
 
     def _validate_command(self, document: dict) -> dict:
         if not isinstance(document, dict):
@@ -190,7 +236,7 @@ class MqttPublisher:
         self._enqueue(PendingMessage("alert-state", document, "state", retain=True))
 
     def _enqueue(self, message: PendingMessage) -> None:
-        if not self._started or self._stopping:
+        if not self._started or self._stopping or not self._accepting:
             return
         with self._condition:
             if message.kind == "state":
@@ -223,6 +269,7 @@ class MqttPublisher:
                 if self._stopping:
                     return
                 pending = self._outbox.popleft()
+                self._sending = True
             try:
                 info = self.client.publish(
                     f"{self.base_topic}/{pending.suffix}",
@@ -237,12 +284,26 @@ class MqttPublisher:
                 log.warning("Chưa gửi được MQTT (%s); giữ bản tin để thử lại", exc)
                 with self._condition:
                     self._outbox.appendleft(pending)
+                    self._sending = False
+                    self._condition.notify_all()
                 time.sleep(1)
+            else:
+                with self._condition:
+                    self._sending = False
+                    self._condition.notify_all()
 
-    def stop(self) -> None:
+    def stop(self, flush_timeout_s: float = 3.0) -> None:
+        """Gửi nốt bản tin còn chờ (tối đa ``flush_timeout_s``) rồi báo offline và ngắt."""
         if not self._started:
             return
+        deadline = time.monotonic() + flush_timeout_s
         with self._condition:
+            self._accepting = False
+            while (self._connected and (self._outbox or self._sending)
+                   and time.monotonic() < deadline):
+                self._condition.wait(timeout=0.1)
+            if self._outbox:
+                log.warning("Dừng khi còn %d bản tin MQTT chưa gửi", len(self._outbox))
             self._stopping = True
             connected = self._connected
         if connected:

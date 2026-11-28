@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://health-watch.local/contracts/mqtt/status.v1.schema.json",
+  "title": "Health Watch device status v1",
+  "description": "Retained online/offline; bản offline cũng là Last Will của Pi.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "device_id", "boot_id", "state", "software_version"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "device_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "boot_id": { "type": "string", "format": "uuid" },
+    "state": { "enum": ["online", "offline"] },
+    "software_version": { "type": "string", "pattern": "^health-watch-pi/[0-9]+\.[0-9]+\.[0-9]+$" }
+  }
+}

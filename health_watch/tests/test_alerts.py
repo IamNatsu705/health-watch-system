@@ -27,7 +27,9 @@ class FakePin:
 
 class AlertOutputTests(unittest.TestCase):
     def test_fall_is_red_without_buzzer_but_sos_uses_buzzer(self):
-        board = types.SimpleNamespace(D22=22, D27=27, D17=17, D23=23)
+        from config import BUZZER_GPIO, GREEN_LED_GPIO, RED_LED_GPIO, SOS_BUTTON_GPIO
+        pins = (GREEN_LED_GPIO, RED_LED_GPIO, BUZZER_GPIO, SOS_BUTTON_GPIO)
+        board = types.SimpleNamespace(**{f"D{pin}": pin for pin in pins})
         digitalio = types.SimpleNamespace(DigitalInOut=FakePin, Pull=types.SimpleNamespace(UP=object()))
         with patch.dict(sys.modules, {"board": board, "digitalio": digitalio}):
             sys.modules.pop("alerts", None)

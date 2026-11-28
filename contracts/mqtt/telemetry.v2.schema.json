@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://health-watch.local/contracts/mqtt/telemetry.v2.schema.json",
+  "title": "Health Watch telemetry v2",
+  "description": "Số đo tổng hợp ~1 Hz từ Pi thật. Bước chân có hai nguồn: thuật toán xử lý tín hiệu và AI (khi Pi nạp được mô hình). Giá trị không đo/ước tính được là null, không bao giờ là số mẫu.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "device_id", "boot_id", "sequence", "measured_at",
+    "session_started_at", "uptime_s", "clock_synced", "firmware_version",
+    "step_algorithm", "step_model", "distance_basis", "metrics"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "device_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "boot_id": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+    "measured_at": { "type": "string", "format": "date-time" },
+    "session_started_at": { "type": "string", "format": "date-time" },
+    "uptime_s": { "type": "number", "minimum": 0, "maximum": 31536000 },
+    "clock_synced": { "type": "boolean" },
+    "firmware_version": { "type": "string", "pattern": "^health-watch-pi/[0-9]+\.[0-9]+\.[0-9]+$" },
+    "step_algorithm": { "enum": ["peak-bout-v2"] },
+    "step_model": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$" },
+            "version": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,32}$" }
+          }
+        }
+      ]
+    },
+    "distance_basis": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["step_length_m", "method"],
+          "properties": {
+            "step_length_m": { "type": "number", "minimum": 0.25, "maximum": 1.3 },
+            "method": { "enum": ["measured", "height_ratio"] }
+          }
+        }
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "heart_rate_bpm", "finger_present", "imu_status",
+        "steps_algorithm_session", "steps_ai_session",
+        "walking", "walking_probability", "cadence_spm",
+        "distance_m_session", "calories_kcal_session"
+      ],
+      "properties": {
+        "heart_rate_bpm": { "type": ["integer", "null"], "minimum": 0, "maximum": 300 },
+        "finger_present": { "type": "boolean" },
+        "imu_status": { "enum": ["starting", "ok", "saturated", "error", "frozen"] },
+        "steps_algorithm_session": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "steps_ai_session": { "type": ["integer", "null"], "minimum": 0, "maximum": 100000000 },
+        "walking": { "type": ["boolean", "null"] },
+        "walking_probability": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "cadence_spm": { "type": ["number", "null"], "minimum": 0, "maximum": 400 },
+        "distance_m_session": { "type": ["number", "null"], "minimum": 0, "maximum": 100000000 },
+        "calories_kcal_session": { "type": ["number", "null"], "minimum": 0, "maximum": 10000000 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "step_model": { "type": "null" } } },
+      "then": { "properties": { "metrics": { "properties": { "steps_ai_session": { "type": "null" } } } } },
+      "else": { "properties": { "metrics": { "properties": { "steps_ai_session": { "type": "integer" } } } } }
+    },
+    {
+      "if": { "properties": { "distance_basis": { "type": "null" } } },
+      "then": { "properties": { "metrics": { "properties": {
+        "distance_m_session": { "type": "null" }, "calories_kcal_session": { "type": "null" } } } } }
+    }
+  ]
+}

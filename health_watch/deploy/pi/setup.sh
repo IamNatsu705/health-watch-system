@@ -17,7 +17,7 @@ fi
 
 sudo apt update
 sudo apt install -y \
-    python3-venv python3-pip python3-spidev python3-libgpiod \
+    python3-venv python3-pip python3-spidev python3-libgpiod python3-numpy \
     i2c-tools fonts-dejavu-core
 
 for group in i2c spi gpio; do

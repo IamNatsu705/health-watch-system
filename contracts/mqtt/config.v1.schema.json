@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://health-watch.local/contracts/mqtt/config.v1.schema.json",
+  "title": "Health Watch device config v1",
+  "description": "Hồ sơ người đeo do người dùng nhập trên web/app; API publish retained để Pi nhận lại sau khi kết nối. profile = null nghĩa là xóa hồ sơ (Pi ngừng ước tính quãng đường/kcal).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "device_id", "profile", "updated_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "device_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "profile": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["height_cm", "weight_kg", "step_length_m"],
+          "properties": {
+            "height_cm": { "type": "number", "minimum": 100, "maximum": 230 },
+            "weight_kg": { "type": "number", "minimum": 25, "maximum": 250 },
+            "step_length_m": { "type": ["number", "null"], "minimum": 0.25, "maximum": 1.3 }
+          }
+        }
+      ]
+    }
+  }
+}
