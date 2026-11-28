@@ -22,12 +22,16 @@ class AlertOutputs:
     def button_pressed(self) -> bool:
         return not self.button.value  # Nhấn nối GPIO23 xuống GND.
 
-    def update(self, fall_active: bool = False, sos_active=None) -> bool:
+    def update(self, fall_active: bool = False, sos_active=None, buzzer_active=None) -> bool:
+        """``buzzer_active`` = trạng thái chân còi lúc này (main.py bíp ngắt quãng khi báo ngã);
+        bỏ trống thì còi theo SOS như check_alerts.py."""
         if sos_active is None:
             sos_active = self.button_pressed
+        if buzzer_active is None:
+            buzzer_active = sos_active
         self.green.value = not (fall_active or sos_active)
         self.red.value = fall_active or sos_active
-        self.buzzer.value = not sos_active  # Chỉ SOS bật còi; ngã chỉ bật LED đỏ.
+        self.buzzer.value = not buzzer_active  # MH-FMD: mức thấp = kêu.
         return sos_active
 
     def close(self) -> None:

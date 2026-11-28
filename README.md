@@ -23,7 +23,8 @@ hiển thị `--`.
   ước tính từ chiều cao/cân nặng thật do người dùng nhập.
 - TFT ST7789: BPM ước tính, bước hôm nay, quãng đường, kcal, trạng thái cảnh báo và
   lỗi cảm biến.
-- Nút SOS bật LED đỏ và còi; phát hiện ngã chỉ bật LED đỏ.
+- Nút SOS bật LED đỏ và còi. Phát hiện ngã (luật ngưỡng): LED đỏ + còi bíp, người đeo có
+  30 s để nhấn nút báo ổn; không phản hồi và nằm yên thì còi kêu liên tục và báo lên web.
 - MQTT QoS 1, **mỗi Pi một tài khoản riêng + ACL**: thiết bị chỉ ghi được dữ liệu của
   chính nó.
 - Ingest kiểm tra JSON Schema (có kiểm tra format), chỉ nhận thiết bị đã đăng ký,

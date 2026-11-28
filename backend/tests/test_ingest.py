@@ -33,7 +33,11 @@ class ContractTests(unittest.TestCase):
 
     def test_pi_status_and_event_match_schema(self):
         parse_message("health/v1/devices/pi-watch-001/status", encode(self.factory.status("online")), DEVICE_IDS)
-        parse_message("health/v1/devices/pi-watch-001/events", encode(self.factory.event("sos_pressed")), DEVICE_IDS)
+        for event_type in ("fall_detected", "fall_cancelled", "fall_alarm", "fall_acknowledged",
+                           "sos_pressed", "sos_released"):
+            kind, parsed = parse_message("health/v1/devices/pi-watch-001/events",
+                                         encode(self.factory.event(event_type)), DEVICE_IDS)
+            self.assertEqual((kind, parsed["event_type"]), ("events", event_type))
 
     def test_rejects_unregistered_device_and_topic_mismatch(self):
         other = DeviceMessageFactory("pi-watch-mock-001")

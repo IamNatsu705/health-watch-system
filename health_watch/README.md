@@ -200,10 +200,21 @@ Khi web/app gửi lệnh cảnh báo từ xa, Pi bật đèn đỏ và còi tron
 Pi bỏ lệnh trùng, lệnh sai thiết bị và lệnh đã cũ; command MQTT không retained.
 Mỗi khi còi hoặc LED đổi trạng thái, Pi gửi `alert-state` retained để web/app
 hiển thị trạng thái phần cứng thật và backend chặn lệnh bật lặp.
-Khi phát hiện ngã, **chỉ LED đỏ bật, còi tắt**; màn hình giữ dòng
-`PHÁT HIỆN NGÃ`. Nhấn nút một lần để xác nhận và xóa cảnh báo; thả nút ra
-trước khi dùng nút SOS tiếp. Nhấn `Ctrl+C` để dừng; chương trình gửi trạng
-thái offline, dừng worker MQTT và tắt các ngõ ra khi thoát.
+Khi phát hiện ngã (`fall_alarm.py`, theo cách Samsung/Apple xử lý báo nhầm):
+
+1. LED đỏ bật, còi **bíp ngắt quãng**, màn hình hiện `PHÁT HIỆN NGÃ` và đếm ngược
+   `Nhấn nút nếu bạn ổn · 30 s`. Nhấn nút = người đeo báo ổn (sự kiện `fall_cancelled`).
+2. Hết 30 s mà người đeo **nằm yên** (không cử động trong 10 s gần nhất) → còi
+   **kêu liên tục**, màn hình `BÁO ĐỘNG NGÃ`, gửi sự kiện `fall_alarm`. Nhấn nút để tắt
+   (`fall_acknowledged`).
+3. Nếu người đeo đã đứng dậy đi lại thì không báo động liên tục, nhưng vẫn bíp và chờ
+   nhấn nút; nằm yên lại đủ 10 s thì chuyển sang bước 2. Khi MPU6050 lỗi (không có mẫu)
+   thì coi như nằm yên: thà báo động thừa còn hơn bỏ sót.
+
+Thời gian chỉnh trong `config.py` (`FALL_CANCEL_WINDOW_S`, `FALL_IMMOBILE_S`). Thả nút ra
+trước khi dùng nút SOS tiếp. Thử luồng này bằng cách thả thiết bị xuống gối/nệm, không
+làm người té. Nhấn `Ctrl+C` để dừng; chương trình gửi trạng thái offline, dừng worker
+MQTT và tắt các ngõ ra khi thoát.
 Nếu màn hình không hiện nhưng terminal vẫn có số, kiểm tra dây SPI, chân
 `DC/RES/CS` và `BLK`. Nếu chương trình báo lỗi cảm biến, chạy lại
 `.venv/bin/python check_i2c.py`.
@@ -308,9 +319,11 @@ bỏ. Tần số được chọn theo chế độ:
 - `BPM~` là ước tính từ các đỉnh IR, chưa qua đánh giá độ chính xác. Số IR thô
   giúp xác nhận MAX30102 đang thu tín hiệu. Chưa tính SpO2 vì cần thuật toán
   và hiệu chuẩn phù hợp; không điền số giả lên màn hình.
-- Phát hiện ngã dựa trên rơi/va chạm, đổi hướng so với trước va chạm và ít
-  cử động khoảng 1,8 giây; hiện nhận mẫu 100 Hz từ FIFO. Logic chưa được hiệu
-  chỉnh cho cách đeo thật. Không làm người thử té ngã để kiểm tra.
+- Phát hiện ngã dựa trên luật ngưỡng (không phải AI): rơi/va chạm, đổi hướng so với
+  trước va chạm và ít cử động khoảng 1,8 giây; hiện nhận mẫu 100 Hz từ FIFO. Logic
+  chưa được kiểm định trên dữ liệu ngã thật và chưa hiệu chỉnh cho cách đeo thật, nên
+  có thể báo nhầm; thời gian hủy 30 s là để xử lý điều đó. Va chạm mạnh có thể vượt
+  thang ±8 g. Không làm người thử té ngã để kiểm tra.
 - MPU6050 đặt thang ±8 g, ±500 °/s. Driver đọc lại thanh ghi sau khi cấu hình
   và từ chối chạy nếu chip không nhận cấu hình.
 - Hàng đợi MQTT nằm trong RAM. Khi dừng có kiểm soát, các bản tin còn chờ được gửi

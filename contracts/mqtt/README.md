@@ -97,12 +97,18 @@ Quy tắc:
 
 `event_type` cho phép:
 
-```text
-fall_detected
-fall_acknowledged
-sos_pressed
-sos_released
-```
+| `event_type` | Ý nghĩa |
+| --- | --- |
+| `fall_detected` | Phát hiện ngã; Pi bật LED đỏ + còi bíp, người đeo có 30 s để bấm nút báo ổn |
+| `fall_cancelled` | Người đeo bấm nút trong lúc chờ: báo ổn (có thể là báo nhầm) |
+| `fall_alarm` | Hết thời gian hủy mà người đeo nằm yên: còi kêu liên tục, cần người đến giúp |
+| `fall_acknowledged` | Có người bấm nút tắt báo động sau `fall_alarm` |
+| `sos_pressed` / `sos_released` | Nút SOS được giữ / thả |
+
+**Khi đổi contract** (ví dụ thêm `event_type`): image Docker của ingest/api chép thư mục
+`contracts/` lúc build, nên phải build lại backend **trước hoặc cùng lúc** cập nhật Pi
+(`docker compose --env-file infra/local/.env -f infra/local/compose.yaml up --build -d`).
+Ingest cũ sẽ từ chối sự kiện mới (`Rejected`) và web không thấy chúng.
 
 Event dùng `occurred_at` của Pi và backend lưu thêm `received_at`.
 

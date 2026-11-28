@@ -63,8 +63,12 @@ def _pulse_trace(draw, pulse) -> None:
     draw.line(points, fill=RED, width=2)
 
 
-def render_dashboard(steps, pulse, alert_state: str, now=None):
-    """Tạo ảnh bằng Pillow; chạy được cả trên PC để kiểm tra bố cục."""
+def render_dashboard(steps, pulse, alert_state: str, now=None, alert_detail: str | None = None):
+    """Tạo ảnh bằng Pillow; chạy được cả trên PC để kiểm tra bố cục.
+
+    ``alert_state``: "" | "fall" (chờ người đeo hủy) | "fall_alarm" (báo động liên tục) | "sos" |
+    "remote". ``alert_detail`` thay dòng chữ nhỏ dưới tiêu đề (ví dụ đếm ngược thời gian hủy).
+    """
     now = now or datetime.now()
     image = Image.new("RGB", (DISPLAY_WIDTH, DISPLAY_HEIGHT), BACKGROUND)
     draw = ImageDraw.Draw(image)
@@ -124,15 +128,13 @@ def render_dashboard(steps, pulse, alert_state: str, now=None):
     draw.ellipse((28, 242, 32, 246), fill=accent)
     draw.ellipse((35, 242, 39, 246), fill=accent)
     draw.arc((26, 243, 40, 253), 15 if alert_state else 0, 165 if alert_state else 180, fill=accent, width=2)
-    title = (
-        "PHÁT HIỆN NGÃ" if alert_state == "fall" else
-        ("SOS ĐANG BẬT" if alert_state == "sos" else
-         ("CẢNH BÁO TỪ XA" if alert_state == "remote" else "BÌNH THƯỜNG"))
-    )
-    detail = (
-        "Nhấn nút để xác nhận" if alert_state == "fall" else
-        ("LED đỏ + còi" if alert_state in {"sos", "remote"} else "Nhấn nút để thử SOS")
-    )
+    title, default_detail = {
+        "fall": ("PHÁT HIỆN NGÃ", "Nhấn nút nếu bạn ổn"),
+        "fall_alarm": ("BÁO ĐỘNG NGÃ", "Nhấn nút để tắt còi"),
+        "sos": ("SOS ĐANG BẬT", "LED đỏ + còi"),
+        "remote": ("CẢNH BÁO TỪ XA", "LED đỏ + còi"),
+    }.get(alert_state, ("BÌNH THƯỜNG", "Nhấn nút để thử SOS"))
+    detail = alert_detail or default_detail
     draw.text((52, 229), title, font=FONT_STATUS, fill=accent)
     draw.text((53, 249), detail, font=FONT_SMALL, fill=MUTED)
     return image
@@ -166,5 +168,5 @@ class Screen:
         _centered(draw, 131, detail, FONT_SMALL, MUTED)
         self._send(image)
 
-    def update(self, steps, pulse, alert_state: str) -> None:
-        self._send(render_dashboard(steps, pulse, alert_state))
+    def update(self, steps, pulse, alert_state: str, alert_detail: str | None = None) -> None:
+        self._send(render_dashboard(steps, pulse, alert_state, alert_detail=alert_detail))

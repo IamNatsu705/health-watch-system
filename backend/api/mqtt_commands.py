@@ -172,6 +172,10 @@ class MqttCommandPublisher:
                 raise CommandConflict("Chưa nhận được trạng thái còi từ Raspberry Pi")
             if active and state["buzzer_active"]:
                 raise CommandConflict("Còi đang bật; không gửi lệnh bật lặp")
+            # Lệnh từ xa chỉ điều khiển cảnh báo từ xa. Báo động ngã/SOS phải tắt bằng nút trên
+            # thiết bị: người ở xa lỡ tay tắt khi chưa ai tới giúp là không an toàn.
+            if not active and state and state["buzzer_active"] and state["source"] in {"fall", "sos"}:
+                raise CommandConflict("Báo động ngã/SOS phải tắt bằng nút trên thiết bị")
             if active and pending and pending["active"]:
                 raise CommandConflict("Lệnh bật còi đang chờ Raspberry Pi xác nhận")
             self._pending[device_id] = {

@@ -1,6 +1,7 @@
 """Đọc cảm biến, đếm bước (thuật toán + AI) trên dữ liệu thật, cảnh báo tại chỗ và gửi MQTT."""
 
 import logging
+import math
 import signal
 import time
 from contextlib import ExitStack
@@ -10,6 +11,8 @@ from smbus2 import SMBus
 from alerts import AlertOutputs
 from clock import clock_synced
 from config import (
+    FALL_CANCEL_WINDOW_S,
+    FALL_IMMOBILE_S,
     I2C_BUS,
     I2C_READ_ATTEMPTS,
     MAX30102_ADDRESS,
@@ -30,6 +33,7 @@ from config import (
     SAMPLE_INTERVAL_S,
     SCREEN_INTERVAL_S,
 )
+from fall_alarm import ALARM, CHECK, FallAlarm
 from inference.walk_gate import load_default_gate
 from mqtt_publisher import BrokerSettings, MqttPublisher
 from processing.fall import FallDetector
@@ -65,6 +69,8 @@ def main() -> None:
     engine = None
     tracker = None
     final_telemetry = None
+    last_command_id = None
+    last_reported_output = None
     try:
         if MQTT_ENABLED:
             if MQTT_PUBLISH_INTERVAL_S <= 0:
@@ -113,6 +119,7 @@ def main() -> None:
                                        sensor_factory=make_max30102)
             tft_ms_max = 0.0
             fall = FallDetector()
+            fall_alarm = FallAlarm(cancel_window_s=FALL_CANCEL_WINDOW_S, immobile_s=FALL_IMMOBILE_S)
             # Khi thoát (trước khi đóng bus): đóng CSV PPG, đưa hai cảm biến về chế độ ngủ.
             cleanup.callback(sleep_sensor, bus, MPU6050_ADDRESS, 0x6B, 0x40, "MPU6050")
             cleanup.callback(sleep_sensor, bus, MAX30102_ADDRESS, 0x09, 0x80, "MAX30102")
@@ -148,8 +155,6 @@ def main() -> None:
             last_imu_status = None
             acknowledge_press = False
             remote_alert_until = float("-inf")
-            last_command_id = None
-            last_reported_output = None
             print("Bat dau doc MPU6050 (FIFO 100 Hz) va MAX30102. Nhan Ctrl+C de dung.")
 
             while True:
@@ -160,9 +165,12 @@ def main() -> None:
                 just_fell = False
                 for sample_time, motion in batch:
                     engine.add_sample(motion.ax, motion.ay, motion.az)
+                    fall_alarm.observe(motion.ax, motion.ay, motion.az, sample_time)
                     was_fall_active = fall.confirmed
                     if fall.update(motion, sample_time) and not was_fall_active:
                         just_fell = True
+                if just_fell:
+                    fall_alarm.start(started)
                 tracker.sync()
                 if imu.status != last_imu_status:
                     if imu.status == "saturated":
@@ -197,34 +205,48 @@ def main() -> None:
                 remote_alert_active = started < remote_alert_until
 
                 button = alerts.button_pressed
-                fall_acknowledged = False
-                if fall.confirmed and button and not last_button and not just_fell:
+                fall_response = None
+                # Lần nhấn mới (không phải nút đang giữ từ trước) trả lời cảnh báo ngã: trong thời
+                # gian hủy = người đeo báo ổn; sau khi đã báo động = tắt còi.
+                if fall_alarm.active and button and not last_button and not just_fell:
+                    phase = fall_alarm.acknowledge()
                     fall.clear()
                     acknowledge_press = True
-                    fall_acknowledged = True
-                    print("Da xac nhan canh bao nga.")
+                    fall_response = "fall_cancelled" if phase == CHECK else "fall_acknowledged"
+                    print("Nguoi deo bao on, huy canh bao nga." if phase == CHECK else "Da tat bao dong nga.")
                 if not button:
                     acknowledge_press = False
-                sos_pressed = button and not acknowledge_press and not fall.confirmed
+                fall_escalated = fall_alarm.update(started)
+                sos_pressed = button and not acknowledge_press and not fall_alarm.active
                 alerts.update(
-                    fall_active=fall.confirmed,
+                    fall_active=fall_alarm.active,
                     sos_active=sos_pressed or remote_alert_active,
+                    buzzer_active=sos_pressed or remote_alert_active or fall_alarm.buzzer_on(started),
                 )
-                alert_state = (
-                    "fall" if fall.confirmed else
-                    ("sos" if sos_pressed else ("remote" if remote_alert_active else ""))
-                )
+                fall_state = {CHECK: "fall", ALARM: "fall_alarm"}.get(fall_alarm.state, "")
+                alert_state = fall_state or ("sos" if sos_pressed else ("remote" if remote_alert_active else ""))
+                remaining = fall_alarm.remaining_s(started)
+                alert_detail = None
+                if remaining is not None:
+                    alert_detail = (f"Nhấn nút nếu bạn ổn · {math.ceil(remaining)} s" if remaining > 0
+                                    else "Đang chờ bạn nhấn nút")
                 output_source = (
                     "remote" if remote_alert_active else
-                    ("sos" if sos_pressed else ("fall" if fall.confirmed else "normal"))
+                    ("sos" if sos_pressed else ("fall" if fall_alarm.active else "normal"))
                 )
+                # Còi bíp ngắt quãng vẫn báo là "đang bật": web hiện trạng thái báo động, không nhấp
+                # nháy theo từng tiếng bíp (và không gửi alert-state mỗi nửa giây). Mã lệnh nằm trong
+                # bộ so sánh để Pi xác nhận MỌI lệnh từ xa, kể cả lệnh không đổi được còi (ví dụ lệnh
+                # tắt tới đúng lúc đang báo ngã): web không phải chờ hết hạn rồi giật ngược trạng thái.
                 output_state = (
-                    sos_pressed or remote_alert_active,
-                    fall.confirmed or sos_pressed or remote_alert_active,
+                    sos_pressed or remote_alert_active or fall_alarm.active,
+                    fall_alarm.active or sos_pressed or remote_alert_active,
                     output_source,
+                    last_command_id,
                 )
                 if alert_state != last_alert:
-                    print({"fall": "PHAT HIEN NGA: LED do bat, coi tat.",
+                    print({"fall": f"PHAT HIEN NGA: LED do + coi bip, nhan nut trong {FALL_CANCEL_WINDOW_S:g} s neu on.",
+                           "fall_alarm": "BAO DONG NGA: nguoi deo nam yen, khong phan hoi; coi keu lien tuc.",
                            "sos": "SOS: LED do va coi bat.",
                            "remote": "CANH BAO TU XA: LED do va coi bat.",
                            "": "Trang thai binh thuong."}[alert_state])
@@ -245,8 +267,10 @@ def main() -> None:
                         last_reported_output = output_state
                     if just_fell:
                         publisher.publish_event(messages.event("fall_detected"))
-                    if fall_acknowledged:
-                        publisher.publish_event(messages.event("fall_acknowledged"))
+                    if fall_escalated:
+                        publisher.publish_event(messages.event("fall_alarm"))
+                    if fall_response:
+                        publisher.publish_event(messages.event(fall_response))
                     if sos_pressed != last_sos:
                         event_type = "sos_pressed" if sos_pressed else "sos_released"
                         publisher.publish_event(messages.event(event_type))
@@ -262,7 +286,7 @@ def main() -> None:
                     last_daily_save = started
                 if started - last_screen >= SCREEN_INTERVAL_S:
                     tft_started = time.monotonic()
-                    screen.update(tracker.screen_view(imu), pulse, alert_state)
+                    screen.update(tracker.screen_view(imu), pulse, alert_state, alert_detail)
                     tft_ms_max = max(tft_ms_max, (time.monotonic() - tft_started) * 1000)
                     last_screen = started
                     # Đọc FIFO MAX30102 ngay sau lúc vẽ TFT để giảm tối đa thời gian không đọc.
@@ -280,16 +304,24 @@ def main() -> None:
                     last_log = started
                 time.sleep(max(0, SAMPLE_INTERVAL_S - (time.monotonic() - started)))
     finally:
-        if engine is not None and tracker is not None:
-            engine.reset_signal()  # xả cửa sổ AI / chuỗi bước đang chờ để không mất bước cuối
-            tracker.sync()
-        if tracker is not None:
-            tracker.daily.save_quietly()
-        if publisher:
-            if final_telemetry is not None:
-                publisher.publish_telemetry(final_telemetry())
-            publisher.stop()
-        alerts.close()
+        try:
+            alerts.close()  # tắt còi/LED ngay; xả hàng đợi MQTT phía dưới có thể mất vài giây
+        finally:
+            if engine is not None and tracker is not None:
+                engine.reset_signal()  # xả cửa sổ AI / chuỗi bước đang chờ để không mất bước cuối
+                tracker.sync()
+            if tracker is not None:
+                tracker.daily.save_quietly()
+            if publisher:
+                if messages is not None and last_reported_output is not None and any(last_reported_output[:2]):
+                    # alert-state là retained: báo còi/LED đã tắt, không để trạng thái "đang kêu" cũ lại.
+                    publisher.publish_alert_state(messages.alert_state(
+                        buzzer_active=False, red_led_active=False, source="normal",
+                        last_command_id=last_command_id, remote_remaining_s=0,
+                    ))
+                if final_telemetry is not None:
+                    publisher.publish_telemetry(final_telemetry())
+                publisher.stop()
 
 
 def stop_on_sigterm(signum, frame):

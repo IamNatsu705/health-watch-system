@@ -32,6 +32,7 @@ $rootNames = @(
     "main.py",
     "config.py",
     "alerts.py",
+    "fall_alarm.py",
     "screen.py",
     "telemetry.py",
     "mqtt_publisher.py",

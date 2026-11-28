@@ -38,8 +38,10 @@ const remoteAlert = ref({
 let timer
 
 const eventLabels = {
-  fall_detected: 'Phát hiện ngã',
-  fall_acknowledged: 'Đã xác nhận ngã',
+  fall_detected: 'Phát hiện ngã — chờ người đeo phản hồi',
+  fall_cancelled: 'Người đeo báo ổn (hủy cảnh báo ngã)',
+  fall_alarm: 'BÁO ĐỘNG NGÃ — người đeo không phản hồi',
+  fall_acknowledged: 'Đã tắt báo động ngã',
   sos_pressed: 'Đã nhấn SOS',
   sos_released: 'Đã thả SOS',
 }
@@ -116,10 +118,37 @@ const alertToggleOn = computed(() => (
     ? remoteAlert.value.pending_active === true
     : remoteAlert.value.buzzer_active
 ))
+// Báo động ngã/SOS chỉ tắt bằng nút trên thiết bị (backend cũng từ chối lệnh tắt từ xa).
+const alertLockedReason = computed(() => (
+  isFresh.value && remoteAlert.value.buzzer_active && ['fall', 'sos'].includes(remoteAlert.value.source)
+    ? 'Báo động ngã/SOS chỉ tắt được bằng nút trên thiết bị.'
+    : ''
+))
 const canToggleAlert = computed(() => (
-  isFresh.value && remoteAlert.value.known &&
+  isFresh.value && remoteAlert.value.known && !alertLockedReason.value &&
   (!remoteAlert.value.pending || remoteAlert.value.pending_active === true)
 ))
+// Banner khi Pi đang báo ngã: điều kiện chính là alert-state do chính Pi xác nhận (source = fall),
+// nên Pi khởi động lại giữa chừng thì banner tự mất; pha (chờ hủy / báo động) lấy từ sự kiện gần nhất.
+const fallBanner = computed(() => {
+  const state = remoteAlert.value
+  if (!isFresh.value || !state.known || !state.red_led_active || state.source !== 'fall') return null
+  const latest = events.value.find(item => item.event_type.startsWith('fall_'))
+  if (latest && !['fall_detected', 'fall_alarm'].includes(latest.event_type)) return null
+  const withTime = text => (latest ? `Lúc ${timeLabel(latest.occurred_at)}: ${text}` : text[0].toUpperCase() + text.slice(1))
+  if (latest?.event_type === 'fall_alarm') {
+    return {
+      level: 'alarm',
+      title: 'BÁO ĐỘNG NGÃ',
+      text: withTime('người đeo không phản hồi sau khi ngã và đang nằm yên. Còi trên thiết bị kêu liên tục — cần người tới hỗ trợ.'),
+    }
+  }
+  return {
+    level: 'check',
+    title: 'PHÁT HIỆN NGÃ',
+    text: withTime('thiết bị phát hiện ngã, đang chờ người đeo nhấn nút báo ổn (30 giây). Nếu không phản hồi, còi sẽ kêu liên tục.'),
+  }
+})
 const alertStateLabel = computed(() => {
   if (!isFresh.value) return 'Không xác định — thiết bị đang offline'
   if (remoteAlert.value.pending) {
@@ -132,7 +161,7 @@ const alertStateLabel = computed(() => {
   const sources = {
     remote: 'Còi đang bật — điều khiển từ xa',
     sos: 'Còi đang bật — nút SOS trên thiết bị',
-    fall: 'Còi đang bật — cảnh báo ngã',
+    fall: 'Còi đang bật — báo ngã (tắt bằng nút trên thiết bị)',
   }
   return sources[remoteAlert.value.source] || 'Còi đang bật'
 })
@@ -368,6 +397,11 @@ onUnmounted(() => clearInterval(timer))
         <small>Dùng IP LAN của máy tính, không dùng localhost trên điện thoại.</small>
       </section>
 
+      <div v-if="fallBanner" class="fall-banner" :class="fallBanner.level" role="alert">
+        <strong><i></i>{{ fallBanner.title }}</strong>
+        <span>{{ fallBanner.text }}</span>
+        <small>Phát hiện ngã bằng luật ngưỡng, có thể báo nhầm; không phải thiết bị y tế.</small>
+      </div>
       <div v-if="error" class="notice error">Không tải được dữ liệu: {{ error }}</div>
       <div v-else-if="loading" class="notice">Đang kết nối hệ thống…</div>
       <div v-else-if="!selectedId" class="notice">Chưa có thiết bị nào trong MQTT_DEVICES gửi dữ liệu. Kiểm tra Pi đã chạy và dùng đúng tài khoản MQTT riêng.</div>
@@ -403,6 +437,7 @@ onUnmounted(() => clearInterval(timer))
             </button>
           </div>
           <small v-if="commandMessage" :class="{ 'command-error': commandError }">{{ commandMessage }}</small>
+          <small v-else-if="alertLockedReason">{{ alertLockedReason }}</small>
           <small v-else>Trạng thái trên đây do chính Raspberry Pi xác nhận qua MQTT.</small>
         </div>
       </section>

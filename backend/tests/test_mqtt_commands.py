@@ -37,14 +37,14 @@ class CommandStateTests(unittest.TestCase):
         publisher._connected.set()
         return publisher
 
-    def report(self, publisher, active, command_id=None, device_id="pi-test"):
+    def report(self, publisher, active, command_id=None, device_id="pi-test", source=None):
         document = {
             "schema_version": 1,
             "device_id": device_id,
             "boot_id": str(uuid4()),
             "buzzer_active": active,
             "red_led_active": active,
-            "source": "remote" if active else "normal",
+            "source": source or ("remote" if active else "normal"),
             "last_command_id": command_id,
             "expires_at": None,
             "reported_at": "2026-11-22T07:00:00Z",
@@ -84,6 +84,17 @@ class CommandStateTests(unittest.TestCase):
             publisher.publish("pi-test", self.command(True))
         state = publisher.publish("pi-test", self.command(False))
         self.assertTrue(state["pending"])
+
+    def test_fall_and_sos_alarms_cannot_be_silenced_remotely(self):
+        publisher = self.make_publisher()
+        for source in ("fall", "sos"):
+            self.report(publisher, True, source=source)
+            with self.assertRaises(CommandConflict):
+                publisher.publish("pi-test", self.command(False))
+            self.assertFalse(publisher.state_view("pi-test")["pending"])
+        # Cảnh báo từ xa vẫn tắt được từ xa.
+        self.report(publisher, True, source="remote")
+        self.assertTrue(publisher.publish("pi-test", self.command(False))["pending"])
 
 
 class RegisteredDeviceTests(CommandStateTests):

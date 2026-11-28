@@ -44,7 +44,16 @@ class AlertOutputTests(unittest.TestCase):
             outputs.update(fall_active=False, sos_active=True)
             self.assertTrue(outputs.red.value)
             self.assertFalse(outputs.buzzer.value)
+
+            # main.py điều khiển còi riêng khi báo ngã (bíp ngắt quãng / liên tục).
+            outputs.update(fall_active=True, sos_active=False, buzzer_active=True)
+            self.assertTrue(outputs.red.value)
+            self.assertFalse(outputs.green.value)
+            self.assertFalse(outputs.buzzer.value)  # mức thấp = kêu
+            outputs.update(fall_active=True, sos_active=False, buzzer_active=False)
+            self.assertTrue(outputs.buzzer.value)
             outputs.close()
+            self.assertTrue(outputs.buzzer.value)
 
 
 if __name__ == "__main__":

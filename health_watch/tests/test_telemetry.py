@@ -7,7 +7,7 @@ from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from telemetry import SOFTWARE_VERSION, DeviceMessageFactory
+from telemetry import EVENT_TYPES, SOFTWARE_VERSION, DeviceMessageFactory
 
 
 class DeviceMessageFactoryTests(unittest.TestCase):
@@ -64,6 +64,14 @@ class DeviceMessageFactoryTests(unittest.TestCase):
         self.assertNotEqual(first["event_id"], second["event_id"])
         UUID(first["event_id"])
         self.assertEqual(first["boot_id"], second["boot_id"])
+
+    def test_event_types_match_mqtt_contract(self):
+        schema = Path(__file__).resolve().parents[2] / "contracts" / "mqtt" / "event.v1.schema.json"
+        if not schema.exists():
+            self.skipTest("chỉ có contracts/ trong repo, không có trên Pi")
+        import json
+        enum = json.loads(schema.read_text(encoding="utf-8"))["properties"]["event_type"]["enum"]
+        self.assertEqual(set(enum), EVENT_TYPES)
 
     def test_rejects_invalid_device_and_event(self):
         with self.assertRaises(ValueError):

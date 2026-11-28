@@ -19,6 +19,12 @@ RED_LED_GPIO = 27
 BUZZER_GPIO = 5 # MH-FMD kích mức cao để còi ko kêu khi boot.
 SOS_BUTTON_GPIO = 23  # Nút nối GPIO23 với GND, dùng pull-up nội bộ.
 
+# Sau khi phát hiện ngã: LED đỏ + còi bíp, người đeo có FALL_CANCEL_WINDOW_S giây để bấm nút
+# báo ổn. Hết giờ mà người đeo nằm yên (không cử động trong FALL_IMMOBILE_S giây gần nhất)
+# thì còi kêu liên tục và gửi sự kiện fall_alarm. Xem fall_alarm.py.
+FALL_CANCEL_WINDOW_S = 30.0
+FALL_IMMOBILE_S = 10.0
+
 # Chiều cao/cân nặng không đặt cứng ở đây: người dùng nhập trên web/app, backend
 # gửi qua topic MQTT `config`, Pi lưu ở state/profile.json. Chưa có hồ sơ thì
 # quãng đường/kcal hiển thị "--" thay vì dùng số mẫu.

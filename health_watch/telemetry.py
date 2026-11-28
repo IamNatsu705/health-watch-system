@@ -7,7 +7,9 @@ from uuid import UUID, uuid4
 from processing.steps import ALGORITHM_NAME as STEP_ALGORITHM
 
 SOFTWARE_VERSION = "health-watch-pi/0.2.0"
-EVENT_TYPES = {"fall_detected", "fall_acknowledged", "sos_pressed", "sos_released"}
+EVENT_TYPES = {
+    "fall_detected", "fall_cancelled", "fall_alarm", "fall_acknowledged", "sos_pressed", "sos_released",
+}
 IMU_STATUSES = {"starting", "ok", "saturated", "error", "frozen"}
 DEVICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
