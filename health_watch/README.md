@@ -208,10 +208,23 @@ Nếu màn hình không hiện nhưng terminal vẫn có số, kiểm tra dây S
 `DC/RES/CS` và `BLK`. Nếu chương trình báo lỗi cảm biến, chạy lại
 `.venv/bin/python check_i2c.py`.
 
-Nếu xuất hiện `[Errno 5] Input/output error` khi di chuyển breadboard,
-tắt nguồn Pi rồi kiểm tra và cắm chắc bốn dây nguồn/GND/SDA/SCL của cả hai
-cảm biến. Mã sẽ thử lại tối đa 3 lần và ghi rõ lỗi ở MPU6050 hay MAX30102;
-nếu vẫn lỗi liên tiếp thì dừng để tránh coi dữ liệu mất kết nối là số đo thật.
+Nếu xuất hiện `[Errno 5] Input/output error` khi di chuyển breadboard hoặc cổ
+tay, đó là dây tiếp xúc kém. Chương trình không dừng: MPU6050 được thử lại mỗi
+2 s (màn hình hiện `LỖI CẢM BIẾN`, không đếm bước trong lúc mất dữ liệu),
+MAX30102 được thử lại mỗi 5 s (không giữ BPM cũ). Để tìm dây lỗi, dừng
+`main.py` rồi chạy:
+
+```bash
+.venv/bin/python check_i2c.py --watch 60
+```
+
+Trong 60 s, lắc nhẹ từng dây và cử động cổ tay; mỗi lỗi được in ngay kèm thời
+điểm. `EIO` là tín hiệu SDA/SCL chập chờn, `EREMOTEIO` là chip không trả lời, còn
+"chip vừa tự reset" nghĩa là MPU6050 đã mất nguồn (dây VCC/GND). Tắt nguồn Pi
+trước khi cắm lại hoặc hàn dây, rồi chạy lại đến khi không còn lỗi.
+
+Khi dừng chương trình (`Ctrl+C` hoặc dừng service), LED xanh tắt và MAX30102
+được đưa về chế độ ngủ nên đèn đỏ của nó cũng tắt; lần chạy sau chúng tự bật lại.
 
 ## Chạy tự động bằng systemd
 
