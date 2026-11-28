@@ -165,7 +165,11 @@ def main() -> None:
                         just_fell = True
                 tracker.sync()
                 if imu.status != last_imu_status:
-                    if imu.ok:
+                    if imu.status == "saturated":
+                        log.info("MPU6050: va chạm vượt thang ±8 g")
+                    elif imu.ok and last_imu_status == "saturated":
+                        pass  # trở lại bình thường sau va chạm, không cần log
+                    elif imu.ok:
                         log.info("MPU6050 %s: %s", imu.status, imu.sensor.info if imu.sensor else "")
                     else:
                         log.warning("MPU6050 %s: %s", imu.status, imu.error)
