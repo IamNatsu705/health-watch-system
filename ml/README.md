@@ -93,8 +93,7 @@ hoạt tự do.
 ### Biểu đồ so sánh không AI và có AI
 
 Chạy lại được bằng `python ml/plot_comparison.py --oxwalk ... --clemson ...`. Script ghi PNG
-và CSV (số liệu gốc của từng hình) vào `docs/figures/`, đồng thời ghi
-`web/src/data/step_evaluation.json` cho mục **"Có AI và không AI"** trên dashboard. Số của AI
+và CSV (số liệu gốc của từng hình) vào `docs/figures/` để dùng cho báo cáo/slide. Số của AI
 trên OxWalk luôn lấy từ đánh giá chéo: mỗi người được đếm bằng mô hình chưa từng thấy
 người đó.
 

@@ -66,12 +66,10 @@ Ví dụ trong mạng đã dùng khi triển khai: `http://172.20.10.11:5173`. K
    dữ liệu mới từ …". Khi API lỗi, số liệu bị xóa khỏi màn hình thay vì đứng yên ở số cũ.
 7. Lỗi cảm biến chuyển động (MPU6050) hiện thành cảnh báo đỏ; khi đó bước chân không
    được đếm.
-8. Mục **"Có AI và không AI"** (bấm "Ẩn so sánh" để ẩn; trình duyệt nhớ lựa chọn):
-   - trực tiếp từ Pi: số bước hôm nay có AI và không AI, đường cộng dồn của phiên đang
-     chạy, cột 7 ngày; Pi luôn gửi cả hai bộ đếm;
-   - kiểm định trên dữ liệu thật có video (OxWalk, Clemson): sai số thuật toán cũ, thuật
-     toán mới và AI, cùng 2 ví dụ 60 giây. Số liệu ở `src/data/step_evaluation.json` do
-     `ml/plot_comparison.py` sinh ra, không nhập tay.
+8. Mục **"Có AI và không AI"** (bấm "Ẩn so sánh" để ẩn; trình duyệt nhớ lựa chọn): số bước
+   hôm nay có AI và không AI, đường cộng dồn của phiên đang chạy và cột 7 ngày, lấy trực
+   tiếp từ Pi (Pi luôn gửi cả hai bộ đếm). Biểu đồ kiểm định trên dữ liệu có video nằm ở
+   `docs/figures/` (xem `ml/README.md`), không hiển thị trên dashboard.
 
 ### Công tắc cảnh báo ON/OFF
 

@@ -14,7 +14,6 @@ luyện nên dùng mô hình chính thức. Kết quả ghi ra PNG và CSV (số
 
 import argparse
 import csv
-import json
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -218,35 +217,6 @@ def figure_examples(examples, path: Path):
     plt.close(fig)
 
 
-def web_summary(people, clemson, examples, path: Path):
-    """Số liệu cho mục so sánh trên dashboard (web/src/data/step_evaluation.json)."""
-    groups = [{"key": "oxwalk", "label": "OxWalk · sinh hoạt tự do", "sessions": len(people),
-               "rows": [(p[1], p[2], p[3], p[4]) for p in people]}]
-    for gait, label in (("Regular", "Clemson · đi đều"), ("SemiRegular", "Clemson · đi bán đều"),
-                        ("Irregular", "Clemson · đi lộn xộn trong phòng")):
-        rows = [(r[2], r[3], r[4], r[5]) for r in clemson if r[1] == gait]
-        groups.append({"key": f"clemson_{gait.lower()}", "label": label, "sessions": len(rows), "rows": rows})
-    gate = WalkGate.load(DEFAULT_MODEL_PATH)
-    document = {
-        "generated_by": "ml/plot_comparison.py",
-        "model": f"{gate.name} {gate.version}",
-        "note": ("AI trên OxWalk: đánh giá chéo theo người (mô hình chưa từng thấy người được đếm). "
-                 "Clemson: không dùng để huấn luyện. Số bước thật gán nhãn bằng video."),
-        "groups": [{
-            "key": g["key"], "label": g["label"], "sessions": g["sessions"],
-            "true_steps": int(sum(r[0] for r in g["rows"])),
-            "mape": {name: round(mape([r[0] for r in g["rows"]], [r[i] for r in g["rows"]]), 1)
-                     for i, name in ((1, "old"), (2, "algorithm"), (3, "ai"))},
-        } for g in groups],
-        "examples": [{
-            "title": title,
-            "series": [[row[0], row[1], row[2], row[3], row[4]] for row in series[4::5] or series],
-        } for title, series in examples],
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--oxwalk", type=Path, required=True)
@@ -275,7 +245,6 @@ def main():
     figure_per_person(people, args.out / "steps_per_person_oxwalk.png")
     figure_summary(people, clemson, args.out / "steps_error_summary.png")
     figure_examples(examples, args.out / "steps_examples.png")
-    web_summary(people, clemson, examples, REPO / "web" / "src" / "data" / "step_evaluation.json")
     true = [p[1] for p in people]
     print("OxWalk MAPE: cũ %.1f%%, mới %.1f%%, AI %.1f%% (đánh giá chéo: %s)" % (
         mape(true, [p[2] for p in people]), mape(true, [p[3] for p in people]),

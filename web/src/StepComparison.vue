@@ -1,9 +1,8 @@
 <script setup>
-// So sánh đếm bước CÓ AI và KHÔNG AI: (1) trực tiếp từ Pi, (2) kiểm định trên dữ liệu thật có video.
+// So sánh đếm bước CÓ AI và KHÔNG AI trên dữ liệu trực tiếp từ Pi (Pi luôn gửi cả hai bộ đếm).
 import { computed, ref } from 'vue'
 import BarChart from './charts/BarChart.vue'
 import LineChart from './charts/LineChart.vue'
-import evaluation from './data/step_evaluation.json'
 
 const props = defineProps({
   daily: { type: Array, default: () => [] },
@@ -15,8 +14,6 @@ const props = defineProps({
 // Bảng màu dataviz (dark), đã kiểm tra mù màu trên nền thẻ #142331.
 const AI = { key: 'ai', label: 'Có AI', color: '#338ced' }
 const ALG = { key: 'algorithm', label: 'Không AI (chỉ thuật toán)', color: '#00a888' }
-const OLD = { key: 'old', label: 'Thuật toán cũ (peak-v1)', color: '#e76624' }
-const TRUTH = { key: 'truth', label: 'Số bước thật (video)', color: '#e9f1f7', dashed: true }
 
 const HIDE_KEY = 'health-watch-hide-ai-compare'
 const hidden = ref(localStorage.getItem(HIDE_KEY) === '1')
@@ -51,21 +48,6 @@ const weekGroups = computed(() => props.daily.map(d => ({
   values: { ai: d.sessions ? d.steps_ai : null, algorithm: d.sessions ? d.steps_algorithm : null },
 })))
 
-const evalGroups = evaluation.groups.map(g => {
-  const [dataset, ...rest] = g.label.split(' · ')
-  return { label: dataset, sublabel: rest.join(' · '), values: g.mape }
-})
-const examples = evaluation.examples.map(e => ({
-  title: e.title,
-  series: [
-    { ...TRUTH, points: e.series.map(r => [r[0], r[1]]) },
-    { ...OLD, points: e.series.map(r => [r[0], r[2]]) },
-    { ...ALG, points: e.series.map(r => [r[0], r[3]]) },
-    { ...AI, points: e.series.map(r => [r[0], r[4]]) },
-  ],
-}))
-const percent = (v) => `${Number(v).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`
-const seconds = (v) => `${Math.round(v)} s`
 </script>
 
 <template>
@@ -80,7 +62,6 @@ const seconds = (v) => `${Math.round(v)} s`
 
     <template v-if="!hidden">
       <div class="compare-block">
-        <h3>Trên thiết bị này (dữ liệu trực tiếp)</h3>
         <p v-if="!hasModel" class="compare-note">Pi chưa nạp mô hình AI, nên chỉ có số của thuật toán.</p>
         <div class="compare-tiles">
           <div class="compare-tile"><span class="swatch" :style="{ background: AI.color }"></span><small>Hôm nay · có AI</small><strong>{{ today?.sessions ? number(today.steps_ai) : '--' }}</strong></div>
@@ -107,23 +88,6 @@ const seconds = (v) => `${Math.round(v)} s`
           </figure>
         </div>
         <p class="compare-note">Khi chạy trực tiếp không có số bước thật để đối chiếu. Muốn kiểm chứng trên thiết bị: vừa đi vừa đếm tay, hoặc ghi phiên bằng <code>record_imu.py</code>.</p>
-      </div>
-
-      <div class="compare-block">
-        <h3>Kiểm định trên dữ liệu thật có video gán nhãn</h3>
-        <figure>
-          <figcaption>Sai số trung bình mỗi người/phiên (%), thấp hơn là tốt hơn</figcaption>
-          <div class="legend"><span><i :style="{ background: OLD.color }"></i>{{ OLD.label }}</span><span><i :style="{ background: ALG.color }"></i>{{ ALG.label }}</span><span><i :style="{ background: AI.color }"></i>{{ AI.label }}</span></div>
-          <BarChart :groups="evalGroups" :series="[OLD, ALG, AI]" :label-keys="['old', 'algorithm', 'ai']" :format-y="percent" :y-max="100" :height="240" aria-label="Sai số đếm bước của ba bộ đếm trên OxWalk và Clemson" />
-        </figure>
-        <div class="compare-charts">
-          <figure v-for="example in examples" :key="example.title">
-            <figcaption>{{ example.title }}</figcaption>
-            <div class="legend"><span v-for="s in example.series" :key="s.key"><i :class="{ dashed: s.dashed }" :style="{ background: s.dashed ? 'transparent' : s.color, borderColor: s.color }"></i>{{ s.label }}</span></div>
-            <LineChart :series="example.series" :format-x="seconds" :height="190" :aria-label="`Ví dụ: ${example.title}`" />
-          </figure>
-        </div>
-        <p class="compare-note">{{ evaluation.note }} Mô hình: {{ evaluation.model }}. Số liệu do <code>{{ evaluation.generated_by }}</code> sinh ra; CSV gốc ở <code>docs/figures/</code>.</p>
       </div>
     </template>
   </section>
