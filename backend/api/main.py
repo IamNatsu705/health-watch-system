@@ -255,9 +255,12 @@ def day_totals(db: Session, device_id: str, start: datetime, end: datetime) -> d
     v2 = (sample.device_id == device_id) & (sample.schema_version >= 2)
     boots_in_day = select(sample.boot_id).where(v2, sample.received_at >= start, sample.received_at < end)
     before_start = sample.received_at < start
+    in_day = sample.received_at >= start
 
     def bounds(column):
-        return (func.max(column).label(f"{column.key}_end"),
+        # Giá trị cuối lấy TRONG ngày: nếu cả ngày là NULL (ví dụ hồ sơ đã bị xóa) thì kết quả là
+        # None ("--"), không mượn giá trị của hôm trước để ra 0.
+        return (func.max(case((in_day, column))).label(f"{column.key}_end"),
                 func.max(case((before_start, column))).label(f"{column.key}_start"))
 
     columns = (sample.steps_session, sample.steps_ai_session, sample.distance_m_session,

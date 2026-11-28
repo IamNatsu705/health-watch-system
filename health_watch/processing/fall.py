@@ -14,6 +14,10 @@ class FallDetector:
     CHECK_TIMEOUT_S = 6.0
     MIN_DIRECTION_CHANGE_DEG = 50.0
     MAX_STILL_GYRO_DPS = 49.0
+    # Hướng nền được làm mượt 0,9/0,1 mỗi mẫu ở nhịp 25 Hz (40 ms) như thiết kế gốc. Hệ số được
+    # tính theo khoảng thời gian thật giữa hai mẫu, nên hằng số thời gian (~0,38 s) giữ nguyên
+    # khi luồng mẫu là 100 Hz từ FIFO.
+    BASELINE_KEEP_PER_40MS = 0.9
 
     def __init__(self):
         self.state = "normal"
@@ -24,6 +28,7 @@ class FallDetector:
         self.before_impact = None
         self.magnitude_g = 0.0
         self.direction_change_deg = 0.0
+        self._last_time = None
 
     @property
     def confirmed(self) -> bool:
@@ -47,6 +52,8 @@ class FallDetector:
         magnitude = math.sqrt(sum(axis * axis for axis in vector))
         gyro = math.sqrt(motion.gx**2 + motion.gy**2 + motion.gz**2)
         self.magnitude_g = magnitude
+        dt = 0.04 if self._last_time is None else min(max(now - self._last_time, 0.0), 1.0)
+        self._last_time = now
 
         if self.confirmed:
             return True
@@ -56,7 +63,8 @@ class FallDetector:
                 if self.baseline is None:
                     self.baseline = vector
                 else:
-                    self.baseline = tuple(0.9 * old + 0.1 * new for old, new in zip(self.baseline, vector))
+                    keep = self.BASELINE_KEEP_PER_40MS ** (dt / 0.04)
+                    self.baseline = tuple(keep * old + (1 - keep) * new for old, new in zip(self.baseline, vector))
             if magnitude < self.FREE_FALL_G:
                 self.state = "free"
                 self.free_since = now

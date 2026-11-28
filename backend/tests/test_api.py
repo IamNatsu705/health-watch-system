@@ -115,6 +115,20 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(days[1]["sessions"], 2)
         self.assertIsNone(days[1]["distance_m"])
 
+    def test_estimates_are_null_on_a_day_without_profile_in_same_boot(self):
+        zone = api.ZoneInfo("Asia/Ho_Chi_Minh")
+        today = datetime.now(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday = (today - timedelta(hours=2)).astimezone(timezone.utc)
+        morning = (today + timedelta(hours=1)).astimezone(timezone.utc)
+        # Hôm qua có hồ sơ: 1000 bước, 700 m. Sáng nay hồ sơ đã bị xóa: Pi gửi null.
+        self.store(telemetry(self.factory, steps=1000, ai=1000, uptime=3600, distance=700.0), yesterday)
+        self.store(telemetry(self.factory, steps=1500, ai=1500, uptime=14000), morning)
+        days = self.client.get("/api/v1/devices/pi-watch-001/steps/daily?days=2").json()["days"]
+        self.assertEqual(days[1]["steps"], 500)
+        self.assertIsNone(days[1]["distance_m"])        # "--", không phải 0,00 km
+        self.assertIsNone(days[1]["calories_kcal"])
+        self.assertEqual(days[0]["distance_m"], 700.0)
+
     def test_profile_is_validated_stored_and_published_as_valid_config(self):
         with self.sessions.begin() as db:
             db.add(Device(id="pi-watch-001", name="pi-watch-001", online=False))

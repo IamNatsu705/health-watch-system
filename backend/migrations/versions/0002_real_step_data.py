@@ -57,11 +57,15 @@ def upgrade():
         batch.alter_column("distance_m_session", existing_type=sa.Float(), nullable=True)
         batch.alter_column("calories_kcal_session", existing_type=sa.Float(), nullable=True)
         batch.create_index("ix_telemetry_device_received", ["device_id", "received_at"])
+        batch.create_index("ix_telemetry_device_boot_received", ["device_id", "boot_id", "received_at"])
 
     op.execute(
         "UPDATE telemetry_samples SET step_algorithm = 'peak-v1', "
         "distance_m_session = NULL, calories_kcal_session = NULL WHERE schema_version = 1"
     )
+    # Mặc định 1 chỉ để đánh dấu dữ liệu cũ; bỏ đi để bản ghi mới luôn ghi phiên bản tường minh.
+    with op.batch_alter_table("telemetry_samples") as batch:
+        batch.alter_column("schema_version", existing_type=sa.Integer(), server_default=None)
 
     op.create_table(
         "device_profiles",
@@ -76,6 +80,7 @@ def upgrade():
 def downgrade():
     op.drop_table("device_profiles")
     with op.batch_alter_table("telemetry_samples") as batch:
+        batch.drop_index("ix_telemetry_device_boot_received")
         batch.drop_index("ix_telemetry_device_received")
         for name in (
             "distance_method", "step_length_m", "cadence_spm", "walking_probability", "walking",

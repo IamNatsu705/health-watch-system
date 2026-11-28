@@ -104,6 +104,7 @@ def main() -> None:
     alerts = AlertOutputs()
     publisher = None
     messages = None
+    engine = None
     tracker = None
     final_telemetry = None
     try:
@@ -142,7 +143,8 @@ def main() -> None:
         process_started = time.monotonic()
 
         with SMBus(I2C_BUS) as bus:
-            imu = ImuStream(bus, MPU6050_ADDRESS)
+            # Gyro vào FIFO cùng gia tốc: mỗi mẫu 100 Hz có gyro đúng thời điểm (phát hiện ngã cần).
+            imu = ImuStream(bus, MPU6050_ADDRESS, fifo_gyro=True)
             pulse = PulseMonitor(MAX30102.SAMPLES_PER_SECOND)
             pulse_sensor = PulseSensor(bus, MAX30102_ADDRESS, pulse)
             fall = FallDetector()
@@ -299,6 +301,9 @@ def main() -> None:
                     last_log = started
                 time.sleep(max(0, SAMPLE_INTERVAL_S - (time.monotonic() - started)))
     finally:
+        if engine is not None and tracker is not None:
+            engine.reset_signal()  # xả cửa sổ AI / chuỗi bước đang chờ để không mất bước cuối
+            tracker.sync()
         if tracker is not None:
             tracker.daily.save_quietly()
         if publisher:

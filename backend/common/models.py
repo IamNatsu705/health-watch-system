@@ -37,6 +37,8 @@ class TelemetrySample(Base):
     __table_args__ = (
         UniqueConstraint("device_id", "boot_id", "sequence", name="uq_telemetry_identity"),
         Index("ix_telemetry_device_received", "device_id", "received_at"),
+        # Tổng theo ngày gom theo phiên (boot_id) trong một khoảng received_at.
+        Index("ix_telemetry_device_boot_received", "device_id", "boot_id", "received_at"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)

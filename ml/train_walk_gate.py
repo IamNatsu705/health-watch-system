@@ -64,20 +64,50 @@ def build_table(recordings, workers: int) -> dict:
     }
 
 
-def count_errors(table, probabilities, threshold, sessions) -> dict:
-    """Sai số đếm bước theo từng phiên (= từng người với OxWalk) khi cộng đỉnh trong cửa sổ đi bộ."""
-    predicted = np.where(probabilities >= threshold, table["candidates"], 0)
+def session_rows(table, predicted_counts, sessions) -> list[dict]:
+    """Số bước thật/AI/thuật toán theo phiên; bỏ phiên không đếm bước thật (true_steps = None)."""
     rows = []
     for info in sessions:
-        key = f"{info['source']}:{info['session']}"
-        mask = table["session"] == key
-        if not mask.any() or not info["true_steps"]:
+        mask = table["session"] == f"{info['source']}:{info['session']}"
+        if not mask.any() or info["true_steps"] is None:
             continue
-        rows.append((info["true_steps"], int(predicted[mask].sum()), info["algorithm_steps"]))
-    true = np.array([r[0] for r in rows], dtype=float)
-    ai = np.array([r[1] for r in rows], dtype=float)
-    algorithm = np.array([r[2] for r in rows], dtype=float)
-    return summarize(true, ai) | {"algorithm": summarize(true, algorithm)}
+        rows.append({
+            "true": int(info["true_steps"]),
+            "ai": int(predicted_counts[mask].sum()),
+            "algorithm": int(info["algorithm_steps"]),
+            "minutes": info["duration_s"] / 60.0,
+        })
+    return rows
+
+
+def score(rows, key: str) -> dict:
+    """Sai số theo phiên đi bộ (MAPE) + bước giả trong phiên 0 bước (bước/phút).
+
+    ``objective`` (dùng để chọn ngưỡng) là trung bình sai số mọi phiên: phiên có bước dùng
+    |đếm − thật| / thật × 100; phiên 0 bước dùng số bước giả / (số phút × 100 bước/phút) × 100,
+    tức là đếm khống bằng 1 phút đi bộ (100 bước) tính như sai 100%.
+    """
+    walking = [r for r in rows if r["true"] > 0]
+    still = [r for r in rows if r["true"] == 0]
+    out = {}
+    if walking:
+        out.update(summarize(np.array([r["true"] for r in walking], dtype=float),
+                             np.array([r[key] for r in walking], dtype=float)))
+    if still:
+        minutes = sum(r["minutes"] for r in still)
+        out["zero_step_sessions"] = len(still)
+        out["false_steps_per_min"] = round(sum(r[key] for r in still) / minutes, 2)
+    errors = ([abs(r[key] - r["true"]) / r["true"] * 100 for r in walking]
+              + [r[key] / max(r["minutes"], 1e-9) for r in still])
+    out["objective"] = round(float(np.mean(errors)), 3) if errors else None
+    return out
+
+
+def count_errors(table, probabilities, threshold, sessions) -> dict:
+    """Sai số đếm bước theo phiên khi cộng đỉnh trong các cửa sổ AI cho là đi bộ."""
+    predicted = np.where(probabilities >= threshold, table["candidates"], 0)
+    rows = session_rows(table, predicted, sessions)
+    return {"ai": score(rows, "ai"), "algorithm": score(rows, "algorithm")}
 
 
 def summarize(true, predicted) -> dict:
@@ -93,15 +123,21 @@ def summarize(true, predicted) -> dict:
 
 
 def best_threshold(table, probabilities, sessions) -> float:
-    scores = [count_errors(table, probabilities, t, sessions)["mape_percent"] for t in THRESHOLDS]
+    scores = [count_errors(table, probabilities, t, sessions)["ai"]["objective"] for t in THRESHOLDS]
     return float(THRESHOLDS[int(np.argmin(scores))])
+
+
+def fit_labeled(X, y, seed: int = 0) -> RandomForestClassifier:
+    """Chỉ huấn luyện trên cửa sổ có nhãn (bỏ nhãn -1: phiên trộn lẫn, đầu/cuối phiên đi bộ)."""
+    labeled = y >= 0
+    return make_forest(seed).fit(X[labeled], y[labeled])
 
 
 def cross_validated_probabilities(table, index, folds, seed=0) -> np.ndarray:
     probabilities = np.zeros(len(index))
     X, y, groups = table["X"][index], table["label"][index], table["subject"][index]
     for train, test in GroupKFold(n_splits=folds).split(X, y, groups):
-        model = make_forest(seed).fit(X[train], y[train])
+        model = fit_labeled(X[train], y[train], seed)
         probabilities[test] = model.predict_proba(X[test])[:, 1]
     return probabilities
 
@@ -124,24 +160,20 @@ def nested_evaluation(table, folds: int) -> dict:
         inner_prob = cross_validated_probabilities(inner, np.arange(len(inner["X"])), folds - 1)
         threshold = best_threshold(inner, inner_prob, inner_sessions)
         chosen.append(threshold)
-        model = make_forest().fit(table["X"][train], table["label"][train])
+        model = fit_labeled(table["X"][train], table["label"][train])
         outer_probabilities[test] = model.predict_proba(table["X"][test])[:, 1]
         outer_threshold[test] = threshold
     walking = outer_probabilities >= outer_threshold
     predicted = np.where(walking, table["candidates"], 0)
-    rows = []
-    for info in table["sessions"]:
-        mask = table["session"] == f"{info['source']}:{info['session']}"
-        if mask.any() and info["true_steps"]:
-            rows.append((info["true_steps"], int(predicted[mask].sum()), info["algorithm_steps"]))
-    true = np.array([r[0] for r in rows], dtype=float)
+    rows = session_rows(table, predicted, table["sessions"])
+    labeled = table["label"] >= 0
     return {
         "method": f"GroupKFold({folds}) theo người, ngưỡng chọn bằng GroupKFold({folds - 1}) bên trong",
         "thresholds_chosen": chosen,
-        "window_f1": round(float(f1_score(table["label"], walking)), 3),
-        "window_balanced_accuracy": round(float(balanced_accuracy_score(table["label"], walking)), 3),
-        "ai": summarize(true, np.array([r[1] for r in rows], dtype=float)),
-        "algorithm": summarize(true, np.array([r[2] for r in rows], dtype=float)),
+        "window_f1": round(float(f1_score(table["label"][labeled], walking[labeled])), 3),
+        "window_balanced_accuracy": round(float(balanced_accuracy_score(table["label"][labeled], walking[labeled])), 3),
+        "ai": score(rows, "ai"),
+        "algorithm": score(rows, "algorithm"),
     }
 
 
@@ -205,7 +237,9 @@ def main():
                         f"{len({r.subject for r in team})} người)")
     print("Đang chạy StepEngine trên", len(recordings), "bản ghi...", flush=True)
     table = build_table(recordings, args.workers)
-    print(f"{len(table['X'])} cửa sổ, tỷ lệ đi bộ {table['label'].mean():.3f}", flush=True)
+    labeled = table["label"] >= 0
+    print(f"{len(table['X'])} cửa sổ ({int(labeled.sum())} có nhãn), tỷ lệ đi bộ "
+          f"{table['label'][labeled].mean():.3f}", flush=True)
 
     evaluation = {"cross_validation": nested_evaluation(table, args.folds)}
     print(json.dumps(evaluation["cross_validation"], ensure_ascii=False, indent=2), flush=True)
@@ -213,7 +247,7 @@ def main():
     all_index = np.arange(len(table["X"]))
     threshold = best_threshold(table, cross_validated_probabilities(table, all_index, args.folds),
                                table["sessions"])
-    model = make_forest().fit(table["X"], table["label"])
+    model = fit_labeled(table["X"], table["label"])
     document = {
         "format": MODEL_FORMAT,
         "model_name": MODEL_NAME,
@@ -227,9 +261,10 @@ def main():
         "step_algorithm": ALGORITHM_NAME,
         "training_data": {
             "datasets": datasets,
-            "windows": int(len(table["X"])),
-            "walking_fraction": round(float(table["label"].mean()), 3),
-            "label": "cửa sổ 5 s có >=3 bước gán nhãn từ video (OxWalk) hoặc phiên ghi nhãn đi bộ/chạy (nhóm)",
+            "windows": int(labeled.sum()),
+            "walking_fraction": round(float(table["label"][labeled].mean()), 3),
+            "label": ("cửa sổ 5 s có >=3 bước gán nhãn từ video (OxWalk); phiên nhóm thuần đi bộ = 1 "
+                      "(bỏ cửa sổ đầu/cuối), thuần không đi bộ = 0; free_living chỉ dùng để đánh giá"),
         },
         "evaluation": evaluation,
         "trees": export_forest(model),

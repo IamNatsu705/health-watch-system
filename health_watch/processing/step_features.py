@@ -31,7 +31,7 @@ FEATURE_NAMES = (
 GATE_INPUT_NAMES = FEATURE_NAMES + tuple(f"prev_{name}" for name in FEATURE_NAMES)
 
 _FEATURE_RATE_HZ = 25.0
-_DFT_CACHE: dict[int, tuple[list[int], list[list[float]], list[list[float]], list[float]]] = {}
+_DFT_CACHE: dict[tuple[int, float], tuple[list[int], list[list[float]], list[list[float]], list[float]]] = {}
 
 
 def _mean_std(values) -> tuple[float, float]:
@@ -63,7 +63,7 @@ def _best_autocorr(x, den: float, lo: int, hi: int) -> tuple[float, int]:
 
 
 def _dft_tables(n: int, rate: float):
-    cached = _DFT_CACHE.get(n)
+    cached = _DFT_CACHE.get((n, rate))
     if cached is None:
         resolution = rate / n
         bins = [k for k in range(1, n // 2 + 1) if 0.5 <= k * resolution <= 4.0]
@@ -71,7 +71,7 @@ def _dft_tables(n: int, rate: float):
         sin_rows = [[math.sin(2 * math.pi * k * j / n) for j in range(n)] for k in bins]
         hann = [0.5 - 0.5 * math.cos(2 * math.pi * j / (n - 1)) for j in range(n)] if n > 1 else [1.0]
         cached = (bins, cos_rows, sin_rows, hann)
-        _DFT_CACHE[n] = cached
+        _DFT_CACHE[(n, rate)] = cached
     return cached
 
 

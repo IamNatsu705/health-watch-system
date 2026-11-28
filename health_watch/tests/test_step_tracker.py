@@ -67,6 +67,35 @@ class StepTrackerTests(unittest.TestCase):
         self.assertAlmostEqual(tracker.session_estimates()[0], 7.0)
         self.assertEqual(tracker.screen_view(SimpleNamespace(ok=True)).source_label, "Thuật toán")
 
+    def test_midnight_rollover_happens_without_new_steps(self):
+        state = {"day": time.struct_time((2026, 11, 28, 23, 59, 0, 5, 332, 0))}
+        daily = DailyStepStore(Path(self.tmp.name) / "roll.json", clock=lambda: state["day"], synced=lambda: True)
+        tracker = StepTracker(self.engine, daily, None)
+        self.engine.steps_ai = 3000
+        tracker.sync()
+        state["day"] = time.struct_time((2026, 11, 29, 6, 0, 0, 6, 333, 0))
+        tracker.sync()                                    # chưa đi bước nào sáng nay
+        view = tracker.screen_view(SimpleNamespace(ok=True))
+        self.assertEqual(view.steps, 0)
+        self.assertEqual(daily.date, "2026-11-29")
+
+    def test_late_ntp_sync_restores_today_without_new_steps(self):
+        path = Path(self.tmp.name) / "late.json"
+        today = time.struct_time((2026, 11, 28, 9, 0, 0, 5, 332, 0))
+        seeded = DailyStepStore(path, clock=lambda: today, synced=lambda: True)
+        seeded.add(ai=2500)
+        seeded.save()
+        state = {"synced": False}
+        daily = DailyStepStore(path, clock=lambda: today, synced=lambda: state["synced"])
+        tracker = StepTracker(self.engine, daily, None)
+        tracker.sync()
+        self.assertEqual(tracker.screen_view(SimpleNamespace(ok=True)).title, "BƯỚC TỪ KHI BẬT")
+        state["synced"] = True
+        tracker.sync()                                    # người đeo ngồi yên
+        view = tracker.screen_view(SimpleNamespace(ok=True))
+        self.assertEqual(view.title, "BƯỚC HÔM NAY")
+        self.assertEqual(view.steps, 2500)
+
     def test_unknown_date_is_labelled(self):
         daily = DailyStepStore(Path(self.tmp.name) / "other.json", synced=lambda: False)
         tracker = StepTracker(self.engine, daily, None)

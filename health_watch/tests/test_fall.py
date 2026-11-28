@@ -48,5 +48,32 @@ class FallDetectorTests(unittest.TestCase):
         self.assertFalse(self.detector.confirmed)
 
 
+class SampleRateIndependenceTests(unittest.TestCase):
+    def baseline_after(self, rate_hz, seconds=0.4):
+        detector = FallDetector()
+        detector.update(sample(ax=0.0, az=1.0), 0.0)
+        steps = int(seconds * rate_hz)
+        for i in range(1, steps + 1):
+            detector.update(sample(ax=0.6, az=0.8), i / rate_hz)
+        return detector.baseline[0]
+
+    def test_baseline_time_constant_same_at_25_and_100_hz(self):
+        self.assertAlmostEqual(self.baseline_after(25), self.baseline_after(100), places=6)
+
+    def test_free_fall_impact_rotation_and_stillness_confirm_at_100_hz(self):
+        detector = FallDetector()
+        for i in range(100):
+            detector.update(sample(), i * 0.01)
+        t = 1.0
+        for _ in range(12):
+            detector.update(sample(az=0.3), t)
+            t += 0.01
+        detector.update(sample(az=3.2), t)
+        for _ in range(250):
+            t += 0.01
+            detector.update(sample(ax=1, az=0), t)
+        self.assertTrue(detector.confirmed)
+
+
 if __name__ == "__main__":
     unittest.main()

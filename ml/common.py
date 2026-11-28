@@ -34,10 +34,17 @@ from processing.steps import SAMPLE_RATE_HZ, StepEngine  # noqa: E402
 FS = SAMPLE_RATE_HZ
 WALKING_LABEL_MIN_STEPS = 3  # cửa sổ 5 s có >=3 bước gán nhãn được coi là đang đi bộ
 
-# Nhãn hoạt động của bản ghi nhóm (record_imu.py) được coi là đi bộ/chạy.
+# Nhãn hoạt động của bản ghi nhóm (record_imu.py). Chỉ phiên thuần đi bộ hoặc thuần
+# không đi bộ mới cho nhãn cửa sổ; phiên trộn lẫn (free_living) không có nhãn từng bước nên
+# chỉ dùng để đánh giá tổng số bước, không dùng để huấn luyện (nhãn -1).
 WALKING_ACTIVITIES = {
     "walk_normal", "walk_slow", "walk_fast", "stairs_up", "stairs_down", "run",
 }
+NON_WALKING_ACTIVITIES = {
+    "stand", "sit", "desk_work", "gesture_talk", "brush_teeth", "wash_hands", "household",
+    "motorbike_passenger", "bus_or_car",
+}
+UNLABELED = -1
 
 
 @dataclass
@@ -51,6 +58,7 @@ class Recording:
     step_index: np.ndarray | None = None   # chỉ số mẫu của từng bước (nếu gán nhãn từng bước)
     true_steps: int | None = None          # tổng số bước thật
     activity: str | None = None            # nhãn hoạt động cả phiên (dữ liệu nhóm)
+    gap_index: np.ndarray | None = None    # chỉ số mẫu ngay sau một lần đứt mẫu (tràn FIFO, lỗi I2C)
     meta: dict = field(default_factory=dict)
 
 
@@ -108,13 +116,16 @@ def load_team(directory: Path) -> list[Recording]:
         with open(csv_path, newline="", encoding="utf-8") as handle:
             rows = list(csv.DictReader(handle))
         xyz = np.array([[float(r["ax_g"]), float(r["ay_g"]), float(r["az_g"])] for r in rows])
-        gaps = int(meta.get("gap_count", 0))
-        if gaps:
-            print(f"Cảnh báo: {meta_path.name} có {gaps} lần đứt mẫu", file=sys.stderr)
+        gap_index = np.array([i for i, r in enumerate(rows) if i and r.get("gap_before") == "1"], dtype=int)
+        if len(gap_index):
+            print(f"Cảnh báo: {meta_path.name} có {len(gap_index)} lần đứt mẫu (xử lý như Pi)", file=sys.stderr)
+        activity = str(meta["activity"])
+        if activity not in WALKING_ACTIVITIES | NON_WALKING_ACTIVITIES | {"free_living"}:
+            raise ValueError(f"{meta_path.name}: hoạt động lạ {activity!r}")
         recordings.append(Recording(
             source="team", subject=str(meta["subject_id"]), session=str(meta["session_id"]),
-            xyz=xyz, true_steps=meta.get("true_step_count"), activity=str(meta["activity"]),
-            meta=meta,
+            xyz=xyz, true_steps=meta.get("true_step_count"), activity=activity,
+            gap_index=gap_index, meta=meta,
         ))
     return recordings
 
@@ -136,15 +147,36 @@ class _CollectingEngine(StepEngine):
     def __init__(self):
         super().__init__(FS, gate=_CollectGate())
         self.windows = []
+        self.offset = 0  # chỉ số tuyệt đối của mẫu đầu đoạn hiện tại (engine đánh số lại sau mỗi lần đứt)
 
     def on_window(self, window, candidates, x, probability):
-        self.windows.append((window.start, window.end, len(candidates), list(x)))
+        self.windows.append((window.start + self.offset, window.end + self.offset, len(candidates), list(x)))
+
+
+def window_label(recording: Recording, start: int, end: int, first: bool, last: bool):
+    if recording.step_index is not None:
+        true_in_window = int(np.count_nonzero((recording.step_index >= start) & (recording.step_index < end)))
+        return true_in_window, int(true_in_window >= WALKING_LABEL_MIN_STEPS)
+    if recording.activity in NON_WALKING_ACTIVITIES:
+        return None, 0
+    if recording.activity in WALKING_ACTIVITIES and not (first or last):
+        # Bỏ cửa sổ đầu/cuối phiên đi bộ: người đeo có thể chưa bắt đầu hoặc đã dừng.
+        return None, 1
+    return None, UNLABELED
 
 
 def run_engine(recording: Recording, gate=None) -> dict:
-    """Chạy đúng ``StepEngine`` của Pi trên bản ghi; trả số bước và đặc trưng từng cửa sổ."""
+    """Chạy đúng ``StepEngine`` của Pi trên bản ghi; trả số bước và đặc trưng từng cửa sổ.
+
+    Chỗ đứt mẫu trong bản ghi (``gap_index``) được xử lý giống Pi: ``reset_signal()``.
+    """
     engine = _CollectingEngine() if gate is None else StepEngine(FS, gate=gate)
-    for ax, ay, az in recording.xyz.tolist():
+    gaps = set(recording.gap_index.tolist()) if recording.gap_index is not None else set()
+    for index, (ax, ay, az) in enumerate(recording.xyz.tolist()):
+        if index in gaps:
+            engine.reset_signal()
+            if gate is None:
+                engine.offset = index
         engine.add_sample(ax, ay, az)
     engine.reset_signal()  # xả các đỉnh/cửa sổ còn chờ ở cuối bản ghi
     result = {
@@ -159,14 +191,9 @@ def run_engine(recording: Recording, gate=None) -> dict:
     }
     if gate is None:
         rows = []
-        for start, end, n_candidates, x in engine.windows:
-            if recording.step_index is not None:
-                true_in_window = int(np.count_nonzero(
-                    (recording.step_index >= start) & (recording.step_index < end)))
-                label = int(true_in_window >= WALKING_LABEL_MIN_STEPS)
-            else:
-                true_in_window = None
-                label = int(recording.activity in WALKING_ACTIVITIES)
+        count = len(engine.windows)
+        for i, (start, end, n_candidates, x) in enumerate(engine.windows):
+            true_in_window, label = window_label(recording, start, end, i == 0, i == count - 1)
             rows.append((start, end, n_candidates, true_in_window, label, x))
         result["windows"] = rows
     return result

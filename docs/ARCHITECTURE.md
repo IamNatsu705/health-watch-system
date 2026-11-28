@@ -37,7 +37,7 @@ Raspberry Pi                                Máy tính local
 ## 3. Đường dữ liệu bước chân
 
 1. **Cảm biến:** MPU6050 lấy mẫu 100 Hz theo đồng hồ PLL, lọc thông thấp 44 Hz, ±8 g.
-   Mẫu nằm trong FIFO của chip (1024 byte ≈ 1,7 s), nên khi vòng lặp chính bị TFT chặn
+   Mẫu gia tốc + gyro nằm trong FIFO của chip (1024 byte ≈ 0,85 s), nên khi vòng lặp chính bị TFT chặn
    ~200 ms thì không mất mẫu.
 2. **`ImuStream`:** đọc FIFO, gán thời gian đều 10 ms. Lớp này phát hiện tràn FIFO (đứt
    mẫu), I2C lỗi, chip tự reset/ngủ, dữ liệu đứng yên tuyệt đối và bão hòa, và tự khởi

@@ -16,6 +16,8 @@ const profileSaving = ref(false)
 const profileMessage = ref('')
 const profileError = ref(false)
 let refreshToken = 0
+let weekFetchedAt = 0
+const WEEK_REFRESH_MS = 60000  // biểu đồ 7 ngày làm mới mỗi phút; số hôm nay làm mới mỗi lần tải
 const error = ref('')
 const loading = ref(true)
 const updatedAt = ref(null)
@@ -147,6 +149,7 @@ function clearDeviceData() {
   history.value = []
   events.value = []
   daily.value = []
+  weekFetchedAt = 0
   remoteAlert.value = { known: false, buzzer_active: false, pending: false }
 }
 
@@ -179,8 +182,9 @@ async function refresh() {
       error.value = ''
       return
     }
+    const needWeek = !daily.value.length || Date.now() - weekFetchedAt > WEEK_REFRESH_MS
     const [last, samples, recentEvents, days] = await Promise.all([
-      api.latest(id), api.history(id), api.events(id), api.dailySteps(id, 7),
+      api.latest(id), api.history(id), api.events(id), api.dailySteps(id, needWeek ? 7 : 1),
     ])
     // Bỏ phản hồi đến muộn của lần tải cũ hoặc của thiết bị vừa bỏ chọn.
     if (token !== refreshToken || id !== selectedId.value) return
@@ -188,7 +192,16 @@ async function refresh() {
     remoteAlert.value = last.remote_alert || { known: false, buzzer_active: false, pending: false }
     history.value = samples
     events.value = recentEvents
-    daily.value = days.days
+    if (needWeek) {
+      daily.value = days.days
+      weekFetchedAt = Date.now()
+    } else {
+      const todayRow = days.days[0]
+      const week = daily.value.slice()
+      if (week[week.length - 1]?.date === todayRow.date) week[week.length - 1] = todayRow
+      else { week.push(todayRow); week.shift() }  // vừa qua 0 giờ
+      daily.value = week
+    }
     if (profileFor.value !== id) await loadProfile(id)
     updatedAt.value = new Date()
     error.value = ''
@@ -278,6 +291,11 @@ function saveApiAddress() {
   apiAddress.value = getApiBase()
   apiSaved.value = true
   selectedId.value = ''
+  // Máy chủ khác có thể có cùng device_id: không giữ hồ sơ/số liệu của máy chủ cũ.
+  profile.value = null
+  profileFor.value = ''
+  profileMessage.value = ''
+  clearDeviceData()
   loading.value = true
   refresh()
   setTimeout(() => { apiSaved.value = false }, 2000)

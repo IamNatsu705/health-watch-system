@@ -27,6 +27,7 @@ class StepTracker:
         return "ai" if self.engine.gate is not None else "algorithm"
 
     def sync(self) -> None:
+        self.daily.refresh()
         engine = self.engine
         current = (
             engine.steps_algorithm,

@@ -249,7 +249,7 @@ sudo journalctl -u health-watch -n 30 --no-pager
 
 - MPU6050 lấy mẫu 100 Hz vào FIFO (lọc 44 Hz, đồng hồ PLL). Vòng lặp chính đọc FIFO
   mỗi 40 ms, nên vẽ TFT không làm mất mẫu. Log in `imu=ok fifo_overflow=0` khi bình
-  thường. Nếu `fifo_overflow` tăng, vòng lặp bị chặn quá 1,7 s.
+  thường. Nếu `fifo_overflow` tăng, vòng lặp bị chặn quá ~0,85 s (FIFO chứa gia tốc + gyro).
 - Có hai bộ đếm: `steps_alg` (thuật toán `peak-bout-v2`) và `steps_ai` (cổng AI
   `walk-gate-rf`). Màn hình và web dùng số AI khi `models/walk_gate.json` nạp được;
   nếu thiếu hoặc hỏng file, Pi ghi cảnh báo và chỉ dùng thuật toán.

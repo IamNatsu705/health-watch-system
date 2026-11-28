@@ -28,6 +28,8 @@ class MqttCommandPublisher:
         self.retained_configs = retained_configs
         self._connected = threading.Event()
         self._lock = threading.Lock()
+        # Giữ thứ tự: cấu hình đọc từ DB lúc kết nối lại không được publish SAU bản mới hơn.
+        self._config_lock = threading.Lock()
         self._states: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._started = False
@@ -52,16 +54,17 @@ class MqttCommandPublisher:
         self._connected.set()
         log.info("API command publisher connected to MQTT")
         if self.retained_configs is not None:
-            try:
-                configs = self.retained_configs()
-            except Exception:  # DB chưa sẵn sàng: lần kết nối sau sẽ thử lại.
-                log.exception("Could not load stored profiles for republishing")
-                configs = []
-            for device_id, document, _ in configs:
-                # Trong callback của paho không chờ xác nhận (sẽ khóa vòng mạng).
-                client.publish(f"health/v1/devices/{device_id}/config",
-                               json.dumps(document, ensure_ascii=False, separators=(",", ":")),
-                               qos=1, retain=True)
+            with self._config_lock:
+                try:
+                    configs = self.retained_configs()
+                except Exception:  # DB chưa sẵn sàng: lần kết nối sau sẽ thử lại.
+                    log.exception("Could not load stored profiles for republishing")
+                    configs = []
+                for device_id, document, _ in configs:
+                    # Trong callback của paho chỉ xếp hàng, không chờ xác nhận (sẽ khóa vòng mạng).
+                    client.publish(f"health/v1/devices/{device_id}/config",
+                                   json.dumps(document, ensure_ascii=False, separators=(",", ":")),
+                                   qos=1, retain=True)
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
         self._connected.clear()
@@ -150,7 +153,8 @@ class MqttCommandPublisher:
         if not self._connected.wait(timeout=2):
             raise RuntimeError("MQTT broker is not connected")
         payload = json.dumps(document, ensure_ascii=False, separators=(",", ":"))
-        info = self.client.publish(f"health/v1/devices/{device_id}/config", payload, qos=1, retain=True)
+        with self._config_lock:  # chỉ khóa lúc xếp hàng; chờ xác nhận nằm ngoài khóa
+            info = self.client.publish(f"health/v1/devices/{device_id}/config", payload, qos=1, retain=True)
         info.wait_for_publish(timeout=3)
         if not info.is_published():
             raise RuntimeError(mqtt.error_string(info.rc))

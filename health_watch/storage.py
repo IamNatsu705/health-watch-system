@@ -132,7 +132,8 @@ class DailyStepStore:
         self.date = today
         self._dirty = True
 
-    def add(self, **deltas) -> None:
+    def refresh(self) -> None:
+        """Gắn ngày khi NTP vừa đồng bộ và sang ngày mới lúc 0 giờ, kể cả khi chưa có bước mới."""
         self._resolve_date()
         if self.date is not None:
             today = self._today()
@@ -140,6 +141,10 @@ class DailyStepStore:
                 self.save_quietly()
                 self.date = today
                 self.counts = self._empty()
+                self._dirty = True
+
+    def add(self, **deltas) -> None:
+        self.refresh()
         for key, delta in deltas.items():
             if delta:
                 self.counts[key] += delta

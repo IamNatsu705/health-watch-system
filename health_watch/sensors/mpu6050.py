@@ -132,13 +132,9 @@ class MPU6050:
         for register, value in expected.items():
             self._write(register, value)
         self._write(REG_INT_ENABLE, INT_FIFO_OVERFLOW)
-        fifo_mask = FIFO_ACCEL | (FIFO_GYRO if self.fifo_gyro else 0)
-        self._write(REG_FIFO_EN, 0)
-        self._write(REG_USER_CTRL, USER_FIFO_RESET)
-        time.sleep(0.002)
-        self._write(REG_FIFO_EN, fifo_mask)
-        self._write(REG_USER_CTRL, USER_FIFO_ENABLE)
-        expected[REG_FIFO_EN] = fifo_mask
+        self._fifo_mask = FIFO_ACCEL | (FIFO_GYRO if self.fifo_gyro else 0)
+        self.reset_fifo()
+        expected[REG_FIFO_EN] = self._fifo_mask
         expected[REG_PWR_MGMT_1] = PWR_CLOCK_PLL_X
 
         # Đọc lại để không chạy với cấu hình sai mà tưởng là đúng.
@@ -152,8 +148,18 @@ class MPU6050:
         self._read(REG_INT_STATUS)  # Xóa cờ ngắt cũ.
 
     def reset_fifo(self) -> None:
+        """Trình tự theo register map: FIFO_RESET chỉ có hiệu lực khi FIFO_EN = 0.
+
+        Ngừng ghi vào FIFO, tắt FIFO, reset, chờ, bật lại rồi đọc INT_STATUS để xóa cờ tràn
+        cũ, tránh lệch khung byte hoặc báo tràn lặp lại.
+        """
+        self._write(REG_FIFO_EN, 0)
+        self._write(REG_USER_CTRL, 0)
         self._write(REG_USER_CTRL, USER_FIFO_RESET)
+        time.sleep(0.002)
+        self._write(REG_FIFO_EN, self._fifo_mask)
         self._write(REG_USER_CTRL, USER_FIFO_ENABLE)
+        self._read(REG_INT_STATUS)
 
     def is_awake(self) -> bool:
         """Sụt áp có thể làm chip tự reset về chế độ ngủ mà I2C vẫn trả lời bình thường."""
