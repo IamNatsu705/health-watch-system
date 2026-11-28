@@ -393,7 +393,7 @@ onUnmounted(() => clearInterval(timer))
 
         <article class="metric-card">
           <div class="card-heading"><span class="metric-icon step-icon">↗</span><span>BƯỚC CHÂN</span></div>
-          <div class="metric-value"><strong>{{ today ? today.steps.toLocaleString('vi-VN') : '--' }}</strong><span>bước hôm nay</span></div>
+          <div class="metric-value"><strong>{{ today?.sessions ? today.steps.toLocaleString('vi-VN') : '--' }}</strong><span>bước hôm nay</span></div>
           <p>{{ stepSourceLabel }}</p>
           <p v-if="walkingLabel" class="step-live">{{ walkingLabel }}</p>
           <p v-if="current && !current.legacy" class="step-session">Phiên này: AI {{ current.steps_ai_session ?? '—' }} · thuật toán {{ current.steps_algorithm_session }}</p>
