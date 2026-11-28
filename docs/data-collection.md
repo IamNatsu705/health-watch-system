@@ -66,7 +66,17 @@ scp -r pi@pi.local:/home/pi/projects/health_watch/recordings ml\data\team_record
 ```
 
 Khi có `--team`, phần đánh giá chéo theo người gồm cả dữ liệu của nhóm. Một người
-không bao giờ xuất hiện đồng thời trong cả tập huấn luyện và tập kiểm tra.
+không bao giờ xuất hiện đồng thời trong cả tập huấn luyện và tập kiểm tra. Cách dữ liệu
+nhóm được dùng:
+
+- Phiên đi bộ (`walk_*`, `stairs_*`, `run`): mọi cửa sổ 5 s được gán nhãn "đi bộ", trừ cửa
+  sổ đầu và cuối (người đeo có thể chưa bắt đầu hoặc đã dừng).
+- Phiên không đi bộ: mọi cửa sổ được gán nhãn "không đi bộ".
+- `free_living`: không có nhãn từng cửa sổ nên **không dùng để huấn luyện**, chỉ dùng để
+  đo sai số tổng số bước.
+- Phiên đếm 0 bước được tính vào hàm mục tiêu chọn ngưỡng: mỗi phút đếm khống 100 bước
+  tương đương sai 100%.
+- Chỗ đứt mẫu (`gap_before`) được xử lý giống hệt trên Pi.
 
 **Tiêu chí chấp nhận đề xuất**, đo trên dữ liệu của nhóm:
 
