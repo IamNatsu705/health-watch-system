@@ -18,10 +18,12 @@ services:
     environment:
       MQTT_USERNAME: ${MQTT_USERNAME:?Set MQTT_USERNAME in infra/local/.env}
       MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in infra/local/.env}
+      MQTT_DEVICES: ${MQTT_DEVICES:?Set MQTT_DEVICES in infra/local/.env}
     entrypoint: ["/bin/sh", "/mosquitto/config/start.sh"]
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/start.sh:/mosquitto/config/start.sh:ro
+      - mosquitto_data:/mosquitto/data
     ports:
       - "1883:1883"
 
@@ -45,6 +47,8 @@ services:
       MQTT_HOST: mosquitto
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
+      MQTT_DEVICES: ${MQTT_DEVICES:?Set MQTT_DEVICES in infra/local/.env}
+      LOCAL_TIMEZONE: ${LOCAL_TIMEZONE:-Asia/Ho_Chi_Minh}
     command: ["python", "-m", "backend.ingest.main"]
     depends_on:
       migrate:
@@ -62,6 +66,8 @@ services:
       MQTT_HOST: mosquitto
       MQTT_USERNAME: ${MQTT_USERNAME}
       MQTT_PASSWORD: ${MQTT_PASSWORD}
+      MQTT_DEVICES: ${MQTT_DEVICES:?Set MQTT_DEVICES in infra/local/.env}
+      LOCAL_TIMEZONE: ${LOCAL_TIMEZONE:-Asia/Ho_Chi_Minh}
     command: ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "8000:8000"
@@ -69,24 +75,6 @@ services:
       migrate:
         condition: service_completed_successfully
       mosquitto:
-        condition: service_started
-    restart: unless-stopped
-
-  mock-pi:
-    profiles: ["mock"]
-    build:
-      context: ../..
-      dockerfile: backend/Dockerfile
-    environment:
-      MQTT_HOST: mosquitto
-      MQTT_USERNAME: ${MQTT_USERNAME}
-      MQTT_PASSWORD: ${MQTT_PASSWORD}
-      MOCK_DEVICE_ID: ${MOCK_DEVICE_ID:-pi-watch-mock-001}
-    command: ["python", "-m", "backend.mock_publisher.main"]
-    depends_on:
-      mosquitto:
-        condition: service_started
-      ingest:
         condition: service_started
     restart: unless-stopped
 
@@ -108,4 +96,5 @@ services:
 
 volumes:
   postgres_data:
+  mosquitto_data:
   web_node_modules:

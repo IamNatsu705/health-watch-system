@@ -19,7 +19,7 @@
     "session_started_at": { "type": "string", "format": "date-time" },
     "uptime_s": { "type": "number", "minimum": 0, "maximum": 31536000 },
     "clock_synced": { "type": "boolean" },
-    "firmware_version": { "type": "string", "pattern": "^health-watch-pi/[0-9]+\.[0-9]+\.[0-9]+$" },
+    "firmware_version": { "type": "string", "pattern": "^health-watch-pi/[0-9]+[.][0-9]+[.][0-9]+$" },
     "step_algorithm": { "enum": ["peak-bout-v2"] },
     "step_model": {
       "oneOf": [

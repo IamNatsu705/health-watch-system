@@ -33,14 +33,14 @@ class FakeClient:
 class CommandStateTests(unittest.TestCase):
     def make_publisher(self):
         with patch("backend.api.mqtt_commands.mqtt.Client", return_value=FakeClient()):
-            publisher = MqttCommandPublisher()
+            publisher = MqttCommandPublisher(allowed_devices={"pi-test"})
         publisher._connected.set()
         return publisher
 
-    def report(self, publisher, active, command_id=None):
+    def report(self, publisher, active, command_id=None, device_id="pi-test"):
         document = {
             "schema_version": 1,
-            "device_id": "pi-test",
+            "device_id": device_id,
             "boot_id": str(uuid4()),
             "buzzer_active": active,
             "red_led_active": active,
@@ -53,7 +53,7 @@ class CommandStateTests(unittest.TestCase):
             None,
             None,
             SimpleNamespace(
-                topic="health/v1/devices/pi-test/alert-state",
+                topic=f"health/v1/devices/{device_id}/alert-state",
                 payload=json.dumps(document).encode(),
             ),
         )
@@ -84,6 +84,13 @@ class CommandStateTests(unittest.TestCase):
             publisher.publish("pi-test", self.command(True))
         state = publisher.publish("pi-test", self.command(False))
         self.assertTrue(state["pending"])
+
+
+class RegisteredDeviceTests(CommandStateTests):
+    def test_alert_state_from_unregistered_device_is_ignored(self):
+        publisher = self.make_publisher()
+        self.report(publisher, True, device_id="intruder")
+        self.assertFalse(publisher.state_view("intruder")["known"])
 
 
 if __name__ == "__main__":

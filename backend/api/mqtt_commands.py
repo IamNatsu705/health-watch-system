@@ -22,7 +22,10 @@ class CommandConflict(RuntimeError):
 class MqttCommandPublisher:
     """Maintain one broker connection and publish non-retained QoS 1 commands."""
 
-    def __init__(self) -> None:
+    def __init__(self, allowed_devices=frozenset(), retained_configs=None) -> None:
+        self.allowed_devices = frozenset(allowed_devices)
+        # Hàm trả [(device_id, document, updated_at)] để publish lại cấu hình retained khi kết nối.
+        self.retained_configs = retained_configs
         self._connected = threading.Event()
         self._lock = threading.Lock()
         self._states: dict[str, dict] = {}
@@ -47,6 +50,17 @@ class MqttCommandPublisher:
             log.warning("Could not subscribe to device alert state: %s", mqtt.error_string(result))
         self._connected.set()
         log.info("API command publisher connected to MQTT")
+        if self.retained_configs is not None:
+            try:
+                configs = self.retained_configs()
+            except Exception:  # DB chưa sẵn sàng: lần kết nối sau sẽ thử lại.
+                log.exception("Could not load stored profiles for republishing")
+                configs = []
+            for device_id, document, _ in configs:
+                # Trong callback của paho không chờ xác nhận (sẽ khóa vòng mạng).
+                client.publish(f"health/v1/devices/{device_id}/config",
+                               json.dumps(document, ensure_ascii=False, separators=(",", ":")),
+                               qos=1, retain=True)
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties) -> None:
         self._connected.clear()
@@ -60,6 +74,8 @@ class MqttCommandPublisher:
                 raise ValueError("unexpected topic")
             document = json.loads(message.payload.decode("utf-8"))
             device_id = parts[3]
+            if device_id not in self.allowed_devices:
+                raise ValueError("device is not registered in MQTT_DEVICES")
             if not isinstance(document, dict) or document.get("device_id") != device_id:
                 raise ValueError("device_id does not match topic")
             if document.get("schema_version") != 1:
@@ -127,6 +143,16 @@ class MqttCommandPublisher:
         self.client.disconnect()
         self.client.loop_stop()
         self._connected.clear()
+
+    def publish_config(self, device_id: str, document: dict) -> None:
+        """Hồ sơ người đeo, retained để Pi nhận lại sau khi kết nối lại."""
+        if not self._connected.wait(timeout=2):
+            raise RuntimeError("MQTT broker is not connected")
+        payload = json.dumps(document, ensure_ascii=False, separators=(",", ":"))
+        info = self.client.publish(f"health/v1/devices/{device_id}/config", payload, qos=1, retain=True)
+        info.wait_for_publish(timeout=3)
+        if not info.is_published():
+            raise RuntimeError(mqtt.error_string(info.rc))
 
     def publish(self, device_id: str, document: dict) -> dict:
         if not self._connected.wait(timeout=2):
