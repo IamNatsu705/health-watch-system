@@ -63,7 +63,7 @@ class PulseSensor:
 
     def _open_log(self) -> None:
         try:
-            self.logger = self.logger_factory(self.sensor_factory.SAMPLES_PER_SECOND)
+            self.logger = self.logger_factory(self.sensor.SAMPLES_PER_SECOND)
             log.info("Ghi PPG: %s", self.logger.csv_path)
         except OSError as exc:
             log.warning("Không mở được CSV PPG: %s", exc)

@@ -62,9 +62,18 @@ class MAX30102:
     AVERAGING_BITS = {1: 0b000, 2: 0b001, 4: 0b010,
                       8: 0b011, 16: 0b100, 32: 0b101}
 
-    def __init__(self, bus, address: int = 0x57):
+    def __init__(self, bus, address: int = 0x57, sample_rate: int | None = None,
+                 sample_averaging: int | None = None):
         self.bus = bus
         self.address = address
+        # Tùy chọn: hệ thống đầy đủ (main.py, có TFT chặn vòng lặp ~0,2–0,4 s) dùng tần số FIFO
+        # thấp hơn để FIFO 32 mẫu không tràn; mặc định giữ thông số thí nghiệm ở trên.
+        if sample_rate is not None:
+            self.SAMPLE_RATE = sample_rate
+        if sample_averaging is not None:
+            self.SAMPLE_AVERAGING = sample_averaging
+        self.FIFO_RATE = self.SAMPLE_RATE / self.SAMPLE_AVERAGING
+        self.SAMPLES_PER_SECOND = int(self.FIFO_RATE)
         self._validate_config()
         self._configure_sensor()
 

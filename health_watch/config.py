@@ -23,6 +23,14 @@ SOS_BUTTON_GPIO = 23  # Nút nối GPIO23 với GND, dùng pull-up nội bộ.
 # gửi qua topic MQTT `config`, Pi lưu ở state/profile.json. Chưa có hồ sơ thì
 # quãng đường/kcal hiển thị "--" thay vì dùng số mẫu.
 
+# MAX30102 trong hệ thống đầy đủ: 100 Hz, trung bình 4 → 25 cặp RED/IR mỗi giây (thiết kế gốc
+# của PulseMonitor). FIFO 32 mẫu khi đó đệm 1,28 s, đủ cho lúc vẽ TFT chặn vòng lặp. Ở 100 mẫu/s
+# FIFO chỉ đệm 0,32 s và tràn mỗi khi vẽ TFT (đã thấy trên Pi 28/11). Thu PPG nghiên cứu tần số cao:
+# record_ppg.py (dùng thông số mặc định trong sensors/max30102.py, không bật TFT).
+MAX30102_SAMPLE_RATE = 100
+MAX30102_SAMPLE_AVERAGING = 4
+MAX30102_SAMPLES_PER_SECOND = MAX30102_SAMPLE_RATE // MAX30102_SAMPLE_AVERAGING
+
 # Vòng lặp chính 40 ms; MPU6050 tự lấy mẫu 100 Hz vào FIFO nên vẽ TFT không làm mất mẫu.
 SAMPLE_INTERVAL_S = 0.04
 SCREEN_INTERVAL_S = 1.0

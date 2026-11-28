@@ -13,6 +13,9 @@ from config import (
     I2C_BUS,
     I2C_READ_ATTEMPTS,
     MAX30102_ADDRESS,
+    MAX30102_SAMPLE_AVERAGING,
+    MAX30102_SAMPLE_RATE,
+    MAX30102_SAMPLES_PER_SECOND,
     MQTT_DEVICE_ID,
     MQTT_ENABLED,
     MQTT_HOST,
@@ -100,8 +103,15 @@ def main() -> None:
         with SMBus(I2C_BUS) as bus, ExitStack() as cleanup:
             # Gyro vào FIFO cùng gia tốc: mỗi mẫu 100 Hz có gyro đúng thời điểm (phát hiện ngã cần).
             imu = ImuStream(bus, MPU6050_ADDRESS, fifo_gyro=True)
-            pulse = PulseMonitor(MAX30102.SAMPLES_PER_SECOND)
-            pulse_sensor = PulseSensor(bus, MAX30102_ADDRESS, pulse, csv_log=PPG_CSV_LOG)
+            pulse = PulseMonitor(MAX30102_SAMPLES_PER_SECOND)
+
+            def make_max30102(bus_, address):
+                return MAX30102(bus_, address, sample_rate=MAX30102_SAMPLE_RATE,
+                                sample_averaging=MAX30102_SAMPLE_AVERAGING)
+
+            pulse_sensor = PulseSensor(bus, MAX30102_ADDRESS, pulse, csv_log=PPG_CSV_LOG,
+                                       sensor_factory=make_max30102)
+            tft_ms_max = 0.0
             fall = FallDetector()
             # Khi thoát (trước khi đóng bus): đóng CSV PPG, đưa hai cảm biến về chế độ ngủ.
             cleanup.callback(sleep_sensor, bus, MPU6050_ADDRESS, 0x6B, 0x40, "MPU6050")
@@ -247,9 +257,11 @@ def main() -> None:
                     tracker.daily.save_quietly()
                     last_daily_save = started
                 if started - last_screen >= SCREEN_INTERVAL_S:
+                    tft_started = time.monotonic()
                     screen.update(tracker.screen_view(imu), pulse, alert_state)
+                    tft_ms_max = max(tft_ms_max, (time.monotonic() - tft_started) * 1000)
                     last_screen = started
-                    # FIFO MAX30102 ở 100 Hz chỉ đệm ~0,32 s: đọc ngay sau lúc vẽ TFT (~0,2 s).
+                    # Đọc FIFO MAX30102 ngay sau lúc vẽ TFT để giảm tối đa thời gian không đọc.
                     pulse_sensor.poll(time.monotonic(), analyze=False)
                 if started - last_log >= 2.0:
                     print(
@@ -257,8 +269,10 @@ def main() -> None:
                         f"steps_alg={engine.steps_algorithm} steps_ai={engine.steps_ai} "
                         f"walking={engine.walking} p={engine.walking_probability} "
                         f"IR={pulse.ir} finger={'yes' if pulse.finger_present else 'no'} "
-                        f"BPM~={pulse.bpm or '--'}"
+                        f"BPM~={pulse.bpm or '--'} ppg_reinit={pulse_sensor.failures} "
+                        f"tft_ms_max={tft_ms_max:.0f}"
                     )
+                    tft_ms_max = 0.0
                     last_log = started
                 time.sleep(max(0, SAMPLE_INTERVAL_S - (time.monotonic() - started)))
     finally:

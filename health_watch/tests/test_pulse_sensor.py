@@ -66,6 +66,16 @@ class DriverTests(unittest.TestCase):
         self.assertEqual(poll.samples[0], (70000, 90000))
         self.assertEqual(sensor.read_poll().status, "Không có mẫu mới")
 
+    def test_rate_can_be_lowered_for_full_system(self):
+        bus = FakeMaxBus()
+        sensor = MAX30102(bus, sample_rate=100, sample_averaging=4)
+        self.assertEqual(sensor.SAMPLES_PER_SECOND, 25)
+        self.assertEqual(bus.registers[0x08] >> 5, 0b010)        # trung bình 4
+        self.assertEqual((bus.registers[0x0A] >> 2) & 0b111, 0b001)  # 100 Hz
+        self.assertEqual(MAX30102(FakeMaxBus()).SAMPLES_PER_SECOND, 100)  # mặc định nghiên cứu giữ nguyên
+        with self.assertRaises(ValueError):
+            MAX30102(FakeMaxBus(), sample_rate=120)
+
     def test_overflow_stops_batch_and_read_samples_raises(self):
         bus = FakeMaxBus()
         sensor = MAX30102(bus)

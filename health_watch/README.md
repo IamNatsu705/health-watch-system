@@ -272,9 +272,14 @@ sudo journalctl -u health-watch -n 30 --no-pager
 
 ## Thu dữ liệu PPG (nhịp tim)
 
-Driver `sensors/max30102.py` lấy mẫu 200 Hz, trung bình 2, nên ra 100 cặp RED/IR mỗi
-giây. Driver giám sát FIFO: khi FIFO tràn hoặc đầy, lô mẫu đó bị bỏ. FIFO chỉ đệm khoảng
-0,32 s, nên vòng lặp chính đọc lại MAX30102 ngay sau mỗi lần vẽ TFT.
+Driver `sensors/max30102.py` giám sát FIFO (32 mẫu): khi FIFO tràn hoặc đầy, lô mẫu đó bị
+bỏ. Tần số được chọn theo chế độ:
+
+- `record_ppg.py` (nghiên cứu, không bật TFT): mặc định của driver là 200 Hz, trung bình 2,
+  tức 100 mẫu/s; FIFO đệm 0,32 s.
+- `main.py` (hệ thống đầy đủ): `MAX30102_SAMPLE_RATE=100`, `MAX30102_SAMPLE_AVERAGING=4` trong
+  `config.py`, tức 25 mẫu/s; FIFO đệm 1,28 s. Ở 100 mẫu/s, FIFO tràn mỗi lần vẽ TFT (đã đo
+  trên Pi ngày 28/11). Log in `tft_ms_max` và `ppg_reinit` để theo dõi.
 
 - **Chỉ thu PPG** (chế độ nghiên cứu, dừng service trước): `.venv/bin/python record_ppg.py`.
   Phiên dừng ngay khi mất mẫu để `time_s` luôn liên tục. Hai cờ `ENABLE_PULSE_ANALYSIS` và
