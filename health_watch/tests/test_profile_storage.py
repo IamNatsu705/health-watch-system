@@ -51,10 +51,20 @@ class StorageTests(unittest.TestCase):
     def test_profile_round_trip_and_clear(self):
         store = ProfileStore(self.dir / "profile.json")
         self.assertIsNone(store.load())
-        store.save(UserProfile(165, 55, None, "2026-11-28T00:00:00Z"))
+        store.save(UserProfile(165, 55, None, "2026-11-28T00:00:00Z"), "2026-11-28T00:00:00Z")
         self.assertEqual(store.load().weight_kg, 55)
-        store.save(None)
+        store.save(None, "2026-11-28T01:00:00Z")
         self.assertIsNone(store.load())
+        self.assertEqual(ProfileStore(self.dir / "profile.json").load(), None)
+
+    def test_older_config_is_not_applied(self):
+        store = ProfileStore(self.dir / "profile.json")
+        store.save(UserProfile(165, 55), "2026-11-28T08:00:00Z")
+        reloaded = ProfileStore(self.dir / "profile.json")
+        reloaded.load()
+        self.assertFalse(reloaded.is_newer("2026-11-28T07:59:59Z"))
+        self.assertTrue(reloaded.is_newer("2026-11-28T08:00:01+00:00"))
+        self.assertFalse(reloaded.is_newer("not a date"))
 
     def test_corrupt_profile_is_ignored(self):
         (self.dir / "profile.json").write_text("{not json", encoding="utf-8")
@@ -63,15 +73,44 @@ class StorageTests(unittest.TestCase):
     def test_daily_steps_persist_and_roll_over(self):
         day = {"value": time.struct_time((2026, 11, 28, 10, 0, 0, 5, 332, 0))}
         path = self.dir / "daily.json"
-        store = DailyStepStore(path, clock=lambda: day["value"])
-        store.add(algorithm=40, ai=35, ai_running=5)
+        store = DailyStepStore(path, clock=lambda: day["value"], synced=lambda: True)
+        store.add(algorithm=40, ai=35, ai_running=5, distance_m=24.5, kcal=0.9)
         store.save()
-        restored = DailyStepStore(path, clock=lambda: day["value"])
+        restored = DailyStepStore(path, clock=lambda: day["value"], synced=lambda: True)
         self.assertEqual(restored.counts["ai"], 35)
+        self.assertAlmostEqual(restored.counts["distance_m"], 24.5)
         day["value"] = time.struct_time((2026, 11, 29, 0, 0, 5, 6, 333, 0))
         restored.add(ai=2)
         self.assertEqual(restored.counts["ai"], 2)
         self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["date"], "2026-11-28")
+
+    def test_unsynced_clock_does_not_load_or_write_a_guessed_day(self):
+        path = self.dir / "daily.json"
+        yesterday = time.struct_time((2026, 11, 27, 23, 50, 0, 4, 331, 0))
+        today = time.struct_time((2026, 11, 28, 7, 0, 0, 5, 332, 0))
+        DailyStepStore(path, clock=lambda: yesterday, synced=lambda: True).add(ai=8000)
+        first = DailyStepStore(path, clock=lambda: yesterday, synced=lambda: True)
+        first.add(ai=0)
+        first._dirty = True
+        first.save()
+        state = {"clock": yesterday, "synced": False}
+        store = DailyStepStore(path, clock=lambda: state["clock"], synced=lambda: state["synced"])
+        self.assertFalse(store.date_known)
+        store.add(ai=300)
+        self.assertEqual(store.counts["ai"], 300)     # chỉ "từ khi bật máy", không nạp 8000 của hôm qua
+        store.save()                                   # chưa biết ngày: không ghi
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["date"], "2026-11-27")
+        state.update(clock=today, synced=True)
+        store.add(ai=1)
+        self.assertEqual(store.date, "2026-11-28")
+        self.assertEqual(store.counts["ai"], 301)
+
+    def test_storage_errors_do_not_raise(self):
+        store = DailyStepStore(self.dir / "missing_dir" / "x" / "daily.json", synced=lambda: True)
+        store.add(ai=3)
+        store.path = self.dir  # một thư mục: ghi file sẽ lỗi
+        store.save_quietly()
+        self.assertEqual(store.counts["ai"], 3)
 
 
 if __name__ == "__main__":

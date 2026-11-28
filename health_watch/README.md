@@ -17,7 +17,7 @@ cảnh báo từ web/app và trả trạng thái phần cứng thật qua MQTT.
 | `sensors/` | Driver MPU6050 (FIFO 100 Hz, tự phát hiện lỗi) và MAX30102 |
 | `processing/` | Bộ lọc, đếm bước v2, đặc trưng cửa sổ, BPM thử nghiệm, phát hiện ngã |
 | `inference/`, `models/` | Mô hình AI "đang đi bộ hay không" (JSON) và suy luận thuần Python |
-| `user_profile.py`, `storage.py` | Hồ sơ người đeo, ước tính quãng đường/kcal, lưu bước hôm nay |
+| `user_profile.py`, `storage.py`, `step_tracker.py` | Hồ sơ người đeo, ước tính quãng đường/kcal cộng dồn, lưu bước hôm nay |
 | `record_imu.py` | Ghi dữ liệu MPU6050 thật có nhãn để kiểm định/huấn luyện AI |
 | `telemetry.py` | Tạo payload đúng hợp đồng MQTT (telemetry v2) |
 | `mqtt_publisher.py` | Kết nối nền, outbox, nhận command/config và publish state |
@@ -255,9 +255,15 @@ sudo journalctl -u health-watch -n 30 --no-pager
   nếu thiếu hoặc hỏng file, Pi ghi cảnh báo và chỉ dùng thuật toán.
 - Kết quả đánh giá trên dữ liệu thật nằm ở [ml/README.md](../ml/README.md). Cần đo lại
   trên MPU6050 của nhóm bằng `record_imu.py` theo [docs/data-collection.md](../docs/data-collection.md).
-- Số bước hôm nay lưu ở `state/daily_steps.json` (mỗi 10 s và khi dừng), qua 0 giờ
-  thì đặt lại. Hồ sơ người đeo nhận từ web/app qua MQTT `config` và lưu ở
-  `state/profile.json`. Chưa có hồ sơ thì quãng đường và kcal là `--`.
+- Số bước, quãng đường, kcal hôm nay lưu ở `state/daily_steps.json` (mỗi 10 s và khi
+  dừng), qua 0 giờ thì đặt lại theo múi giờ của Pi (`setup.sh` đặt `Asia/Ho_Chi_Minh`,
+  đổi bằng biến `PI_TIMEZONE`). Pi không có RTC: trước khi NTP đồng bộ, màn hình ghi
+  `BƯỚC TỪ KHI BẬT` và không nạp/ghi số của một ngày đoán sai; đồng bộ xong thì cộng
+  vào đúng ngày.
+- Hồ sơ người đeo nhận từ web/app qua MQTT `config` và lưu ở `state/profile.json`; cấu
+  hình có `updated_at` cũ hơn bản đang dùng bị bỏ qua. Chưa có hồ sơ thì quãng đường
+  và kcal là `--`. Quãng đường/kcal được cộng dồn theo từng nhóm bước với hồ sơ tại
+  thời điểm đó, nên đổi hồ sơ không tính lại các bước trước.
 - Khi MPU6050 lỗi (I2C, chip tự reset, dữ liệu đứng yên), màn hình hiện
   `LỖI CẢM BIẾN` và huy hiệu `IMU!`, bộ đếm dừng, Pi tự khởi tạo lại mỗi 2 s. Lỗi
   MAX30102 không làm dừng đếm bước.

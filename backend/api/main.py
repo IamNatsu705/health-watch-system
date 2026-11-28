@@ -23,11 +23,15 @@ def get_db():
         yield session
 
 
-def load_profiles() -> list[tuple[str, dict | None, str]]:
-    """Hồ sơ đã lưu, để API publish lại (retained) mỗi khi kết nối broker."""
+def load_profiles() -> list[tuple[str, dict, str]]:
+    """Cấu hình hiện tại của MỌI thiết bị đăng ký, để publish lại (retained) khi kết nối broker.
+
+    Thiết bị không còn hồ sơ nhận ``profile: null``; nhờ vậy lệnh xóa hồ sơ lúc broker
+    mất kết nối vẫn tới được Pi. Pi bỏ cấu hình có ``updated_at`` cũ hơn bản đang dùng.
+    """
     with SessionLocal() as db:
-        return [config_document(row.device_id, row)
-                for row in db.scalars(select(DeviceProfile)).all() if row.device_id in DEVICE_IDS]
+        return [config_document(device_id, db.get(DeviceProfile, device_id))
+                for device_id in sorted(DEVICE_IDS)]
 
 
 command_publisher = MqttCommandPublisher(allowed_devices=DEVICE_IDS, retained_configs=load_profiles)

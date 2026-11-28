@@ -2,7 +2,6 @@
 
 import logging
 import time
-from types import SimpleNamespace
 
 from smbus2 import SMBus
 
@@ -33,9 +32,9 @@ from processing.steps import StepEngine
 from screen import Screen
 from sensors.max30102 import MAX30102
 from sensors.mpu6050 import ImuStream
+from step_tracker import StepTracker
 from storage import DailyStepStore, ProfileStore
 from telemetry import DeviceMessageFactory, utc_now
-from user_profile import active_kcal, distance_m
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -101,55 +100,6 @@ class PulseSensor:
         self.monitor.ir_history.clear()
 
 
-class StepTracker:
-    """Nối bộ đếm phiên với số bước trong ngày và hồ sơ người đeo."""
-
-    def __init__(self, engine: StepEngine, daily: DailyStepStore, profile):
-        self.engine = engine
-        self.daily = daily
-        self.profile = profile
-        self._last = (0, 0, 0, 0)
-
-    def sync(self) -> None:
-        engine = self.engine
-        current = (
-            engine.steps_algorithm,
-            engine.running_steps_algorithm,
-            engine.steps_ai or 0,
-            engine.running_steps_ai or 0,
-        )
-        deltas = [now - before for now, before in zip(current, self._last)]
-        self.daily.add(algorithm=deltas[0], algorithm_running=deltas[1], ai=deltas[2], ai_running=deltas[3])
-        self._last = current
-
-    @property
-    def source_key(self) -> str:
-        return "ai" if self.engine.gate is not None else "algorithm"
-
-    def today(self) -> tuple[int, int]:
-        key = self.source_key
-        return self.daily.counts[key], self.daily.counts[f"{key}_running"]
-
-    def screen_view(self, imu: ImuStream) -> SimpleNamespace:
-        steps, running = self.today()
-        distance = distance_m(steps, self.profile)
-        return SimpleNamespace(
-            steps=steps,
-            source_label="AI" if self.engine.gate is not None else "Thuật toán",
-            distance_km=None if distance is None else distance / 1000.0,
-            calories_kcal=active_kcal(steps, running, self.profile),
-            imu_ok=imu.ok,
-        )
-
-    def distance_basis(self) -> dict | None:
-        if self.profile is None:
-            return None
-        return {
-            "step_length_m": self.profile.effective_step_length_m,
-            "method": self.profile.step_length_method,
-        }
-
-
 def main() -> None:
     alerts = AlertOutputs()
     publisher = None
@@ -198,7 +148,7 @@ def main() -> None:
             fall = FallDetector()
 
             def telemetry() -> dict:
-                steps = engine.primary_steps
+                distance, kcal = tracker.session_estimates()
                 return messages.telemetry(
                     heart_rate_bpm=pulse.bpm,
                     finger_present=pulse.finger_present,
@@ -209,8 +159,8 @@ def main() -> None:
                     walking=engine.walking,
                     walking_probability=engine.walking_probability,
                     cadence_spm=None if engine.cadence_hz is None else engine.cadence_hz * 60.0,
-                    distance_m_session=distance_m(steps, tracker.profile),
-                    calories_kcal_session=active_kcal(steps, engine.primary_running_steps, tracker.profile),
+                    distance_m_session=distance,
+                    calories_kcal_session=kcal,
                     distance_basis=tracker.distance_basis(),
                     session_started_at=session_started_at,
                     uptime_s=time.monotonic() - process_started,
@@ -260,8 +210,14 @@ def main() -> None:
                         else:
                             remote_alert_until = float("-inf")
                     for update in publisher.pop_profile_updates():
+                        if not profile_store.is_newer(update["updated_at"]):
+                            log.info("Bỏ cấu hình hồ sơ cũ hơn bản đang dùng (%s)", update["updated_at"])
+                            continue
                         tracker.profile = update["profile"]
-                        profile_store.save(tracker.profile)
+                        try:
+                            profile_store.save(tracker.profile, update["updated_at"])
+                        except OSError as exc:
+                            log.warning("Không lưu được hồ sơ (vẫn dùng trong RAM): %s", exc)
                         last_screen = float("-inf")
                 remote_alert_active = started < remote_alert_until
 
@@ -327,7 +283,7 @@ def main() -> None:
                 last_button = button
 
                 if started - last_daily_save >= DAILY_SAVE_INTERVAL_S:
-                    tracker.daily.save()
+                    tracker.daily.save_quietly()
                     last_daily_save = started
                 if started - last_screen >= SCREEN_INTERVAL_S:
                     screen.update(tracker.screen_view(imu), pulse, alert_state)
@@ -344,10 +300,7 @@ def main() -> None:
                 time.sleep(max(0, SAMPLE_INTERVAL_S - (time.monotonic() - started)))
     finally:
         if tracker is not None:
-            try:
-                tracker.daily.save()
-            except OSError as exc:
-                log.warning("Không lưu được số bước trong ngày: %s", exc)
+            tracker.daily.save_quietly()
         if publisher:
             if final_telemetry is not None:
                 publisher.publish_telemetry(final_telemetry())

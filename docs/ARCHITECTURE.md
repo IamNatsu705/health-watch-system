@@ -78,8 +78,10 @@ rồi publish `commands` (QoS 1, không retained). Pi kiểm tra `command_id`/th
 + LED đỏ, và publish retained `alert-state`. Pi tự tắt sau 10 s, tối đa 60 s.
 
 **Hồ sơ người đeo:** web/app PUT/DELETE `/profile`. API lưu DB rồi publish retained
-`config`. API cũng publish lại toàn bộ hồ sơ mỗi lần kết nối broker. Pi kiểm tra phạm vi
-giá trị, lưu `state/profile.json` và dùng ngay. Pi offline vẫn dùng hồ sơ đã lưu.
+`config`. Mỗi lần kết nối broker, API publish lại cấu hình của mọi thiết bị đăng ký
+(không có hồ sơ thì `null`). Pi kiểm tra phạm vi giá trị, bỏ cấu hình cũ hơn bản đang
+dùng (`updated_at`), lưu `state/profile.json` và dùng ngay. Pi offline vẫn dùng hồ sơ
+đã lưu.
 
 ## 6. Mất mạng và độ tin cậy
 
@@ -89,7 +91,11 @@ giá trị, lưu `state/profile.json` và dùng ngay. Pi offline vẫn dùng h�
 - Outbox MQTT trong RAM ưu tiên event; khi dừng có kiểm soát thì gửi nốt bản tin còn chờ
   (tối đa 3 s). Chưa có hàng đợi bền khi mất điện; số bước hôm nay trên Pi được lưu mỗi 10 s.
 - QoS 1 có thể giao trùng: khóa `(device_id, boot_id, sequence)` và `event_id` chống ghi trùng.
-- Last Will của phiên cũ đến muộn không đánh dấu phiên mới là offline.
+- Last Will của phiên cũ đến muộn không đánh dấu phiên mới là offline. Status retained
+  do broker giao lại khi ingest kết nối không làm thiết bị hiện "online".
+- Ingest/API dùng client ID có hậu tố ngẫu nhiên để thiết bị khác không chiếm được kết nối.
+- Pi không có RTC: trước khi NTP đồng bộ, số bước trên Pi là "từ khi bật máy", không
+  gán vào ngày đoán sai. Backend chia ngày theo giờ server nhận.
 
 ## 7. Local và cloud
 

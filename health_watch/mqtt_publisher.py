@@ -162,6 +162,9 @@ class MqttPublisher:
         updated_at = document.get("updated_at")
         if not isinstance(updated_at, str):
             raise ValueError("updated_at bị thiếu")
+        parsed = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("updated_at phải có múi giờ")
         raw_profile = document.get("profile")
         if raw_profile is None:
             return {"profile": None, "updated_at": updated_at}

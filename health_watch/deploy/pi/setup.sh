@@ -20,6 +20,14 @@ sudo apt install -y \
     python3-venv python3-pip python3-spidev python3-libgpiod python3-numpy \
     i2c-tools fonts-dejavu-core
 
+# Số bước "hôm nay" trên TFT chia ngày theo giờ địa phương của Pi; phải khớp
+# LOCAL_TIMEZONE của backend (mặc định Asia/Ho_Chi_Minh).
+PI_TIMEZONE="${PI_TIMEZONE:-Asia/Ho_Chi_Minh}"
+if command -v timedatectl >/dev/null 2>&1; then
+    sudo timedatectl set-timezone "$PI_TIMEZONE"
+    sudo timedatectl set-ntp true || true
+fi
+
 for group in i2c spi gpio; do
     if getent group "$group" >/dev/null 2>&1; then
         sudo usermod -aG "$group" "$PI_USER"

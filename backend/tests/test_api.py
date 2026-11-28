@@ -133,6 +133,18 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(self.publisher.configs[-1][1]["profile"])
         self.assertIsNone(self.client.get("/api/v1/devices/pi-watch-001/profile").json()["profile"])
 
+    def test_reconnect_republishes_config_for_every_registered_device(self):
+        with self.sessions.begin() as db:
+            db.add(Device(id="pi-watch-001", name="pi-watch-001", online=False))
+        self.client.put("/api/v1/devices/pi-watch-001/profile", json={"height_cm": 170, "weight_kg": 60})
+        configs = {device_id: document for device_id, document, _ in api.load_profiles()}
+        self.assertEqual(set(configs), {"pi-watch-001", "pi-watch-002"})
+        self.assertEqual(configs["pi-watch-001"]["profile"]["height_cm"], 170)
+        # Hồ sơ đã xóa (hoặc chưa từng có) vẫn được gửi lại dưới dạng null, để Pi không giữ hồ sơ cũ.
+        self.assertIsNone(configs["pi-watch-002"]["profile"])
+        for document in configs.values():
+            validate("config", document)
+
 
 if __name__ == "__main__":
     unittest.main()

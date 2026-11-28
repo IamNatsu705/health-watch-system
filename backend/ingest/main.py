@@ -3,6 +3,7 @@
 import logging
 import time
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import paho.mqtt.client as mqtt
 from sqlalchemy import select
@@ -68,22 +69,32 @@ def check_step_progress(db: Session, document: dict) -> None:
             raise RejectedMessage(f"{name}={value} vượt quá thời gian chạy {document['uptime_s']} s")
 
 
-def _device(db: Session, device_id: str, received_at: datetime) -> Device:
+def _device(db: Session, device_id: str, received_at: datetime, seen: bool = True) -> Device:
     insert_ignore(db, Device, {"id": device_id, "name": device_id, "online": False}, ["id"])
     device = db.get(Device, device_id)
-    device.last_seen_at = received_at
+    if seen:
+        device.last_seen_at = received_at
     return device
 
 
-def save_message(kind: str, document: dict, session_factory=SessionLocal, received_at: datetime | None = None) -> bool:
-    """Lưu bản tin; trả False nếu là bản trùng (QoS 1 giao lại)."""
+def save_message(kind: str, document: dict, session_factory=SessionLocal, received_at: datetime | None = None,
+                 retained: bool = False) -> bool:
+    """Lưu bản tin; trả False nếu là bản trùng (QoS 1 giao lại).
+
+    ``retained``: broker giao lại status cũ khi ingest kết nối. Bản đó không chứng minh
+    thiết bị đang sống, nên không được làm thiết bị hiện "online".
+    """
     received_at = received_at or datetime.now(timezone.utc)
     device_id = document["device_id"]
     with session_factory.begin() as db:
         if kind == "status":
-            device = _device(db, device_id, received_at)
-            device.last_status_at = received_at
+            device = _device(db, device_id, received_at, seen=not retained)
             device.firmware_version = document["software_version"]
+            if retained:
+                if document["state"] == "offline" and device.current_boot_id in (None, document["boot_id"]):
+                    device.online = False
+                return True
+            device.last_status_at = received_at
             if document["state"] == "online":
                 device.online = True
                 device.current_boot_id = document["boot_id"]
@@ -165,7 +176,7 @@ def on_message(client, userdata, message):
         log.warning("Rejected %s: %s", message.topic, exc)
         return
     try:
-        stored = save_message(kind, document)
+        stored = save_message(kind, document, retained=bool(getattr(message, "retain", False)))
     except RejectedMessage as exc:
         log.warning("Rejected %s: %s", message.topic, exc)
         return
@@ -179,7 +190,8 @@ def on_message(client, userdata, message):
 def main():
     if not DEVICE_IDS:
         raise SystemExit("MQTT_DEVICES trống: chưa đăng ký thiết bị thật nào, ingest không nhận dữ liệu.")
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="health-watch-ingest")
+    # Hậu tố ngẫu nhiên: client khác (kể cả một Pi) không đoán được ID để chiếm kết nối.
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"health-watch-ingest-{uuid4().hex[:12]}")
     client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     client.on_connect = on_connect
     client.on_message = on_message

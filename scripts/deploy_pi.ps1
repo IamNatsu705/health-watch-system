@@ -36,6 +36,7 @@ $rootNames = @(
     "telemetry.py",
     "mqtt_publisher.py",
     "user_profile.py",
+    "step_tracker.py",
     "storage.py",
     "clock.py",
     "record_imu.py",

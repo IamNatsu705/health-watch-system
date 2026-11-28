@@ -165,12 +165,13 @@ class MPU6050:
         status = self._read(REG_INT_STATUS)
         high, low = self.bus.read_i2c_block_data(self.address, REG_FIFO_COUNT_H, 2)
         count = ((high & 0x1F) << 8) | low
-        if status & INT_FIFO_OVERFLOW or count >= self.fifo_capacity - self.frame_size or count % self.frame_size:
+        if status & INT_FIFO_OVERFLOW or count >= self.fifo_capacity - self.frame_size:
             self.reset_fifo()
             return [], True
         frames = []
         per_read = (30 // self.frame_size) * self.frame_size  # SMBus đọc tối đa 32 byte mỗi lần.
-        remaining = count
+        # Chỉ đọc khung trọn vẹn; phần lẻ (khung đang được ghi dở) để lần đọc sau.
+        remaining = (count // self.frame_size) * self.frame_size
         while remaining:
             size = min(remaining, per_read)
             raw = self.bus.read_i2c_block_data(self.address, REG_FIFO_R_W, size)

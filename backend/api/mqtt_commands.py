@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import paho.mqtt.client as mqtt
 
@@ -31,9 +31,10 @@ class MqttCommandPublisher:
         self._states: dict[str, dict] = {}
         self._pending: dict[str, dict] = {}
         self._started = False
+        # Hậu tố ngẫu nhiên: client khác (kể cả một Pi) không đoán được ID để chiếm kết nối.
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
-            client_id="health-watch-api-commands",
+            client_id=f"health-watch-api-{uuid4().hex[:12]}",
         )
         self.client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
         self.client.reconnect_delay_set(min_delay=1, max_delay=30)

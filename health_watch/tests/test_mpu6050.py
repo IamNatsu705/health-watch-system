@@ -114,6 +114,16 @@ class MpuDriverTests(unittest.TestCase):
         sample = sensor.to_sample(frames[0], (0.0, 0.0, 0.0))
         self.assertEqual((sample.ax, sample.ay, sample.az), (1.0, -1.0, 2.0))
 
+    def test_partial_frame_is_left_for_next_read(self):
+        bus = FakeMpuBus()
+        sensor = MPU6050(bus)
+        bus.push_accel(0, 0, 4096, count=3)
+        bus.fifo += bytes(4)  # khung đang được ghi dở
+        frames, overflow = sensor.read_fifo()
+        self.assertFalse(overflow)
+        self.assertEqual(len(frames), 3)
+        self.assertEqual(len(bus.fifo), 4)
+
     def test_overflow_resets_fifo(self):
         bus = FakeMpuBus()
         sensor = MPU6050(bus)

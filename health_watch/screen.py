@@ -102,7 +102,7 @@ def render_dashboard(steps, pulse, alert_state: str, now=None):
     draw.ellipse((31, 160, 40, 167), fill=CYAN)
     draw.rounded_rectangle((21, 162, 29, 176), radius=3, fill=CYAN)
     draw.rounded_rectangle((31, 168, 39, 182), radius=3, fill=CYAN)
-    draw.text((55, 137), "BƯỚC HÔM NAY", font=FONT_LABEL, fill=WHITE)
+    draw.text((55, 137), getattr(steps, "title", "BƯỚC HÔM NAY"), font=FONT_LABEL, fill=WHITE)
     draw.text((176, 138), steps.source_label, font=FONT_SMALL, fill=MUTED)
     if steps.imu_ok:
         draw.text((55, 156), str(steps.steps), font=FONT_VALUE, fill=CYAN)

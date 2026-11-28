@@ -231,15 +231,18 @@ async function saveProfile() {
     profileMessage.value = 'Cần nhập chiều cao và cân nặng thật của người đeo.'
     return
   }
+  const id = selectedId.value
   profileSaving.value = true
   try {
-    const response = await api.saveProfile(selectedId.value, payload)
+    const response = await api.saveProfile(id, payload)
+    logActivity('profile_update', id)
+    if (id !== selectedId.value) return  // đã đổi sang thiết bị khác trong lúc chờ
     profile.value = response.profile
     profileMessage.value = response.delivered_to_broker
       ? 'Đã lưu và gửi tới thiết bị.'
       : 'Đã lưu; sẽ gửi tới thiết bị khi API kết nối lại broker.'
-    logActivity('profile_update', selectedId.value)
   } catch (exc) {
+    if (id !== selectedId.value) return
     profileError.value = true
     profileMessage.value = exc.message || 'Không lưu được hồ sơ.'
   } finally {
@@ -249,15 +252,20 @@ async function saveProfile() {
 
 async function clearProfile() {
   if (!selectedId.value || profileSaving.value) return
+  const id = selectedId.value
   profileSaving.value = true
   try {
-    await api.clearProfile(selectedId.value)
+    const response = await api.clearProfile(id)
+    logActivity('profile_clear', id)
+    if (id !== selectedId.value) return
     profile.value = null
     profileForm.value = { height_cm: '', weight_kg: '', step_length_m: '' }
     profileError.value = false
-    profileMessage.value = 'Đã xóa hồ sơ; thiết bị ngừng ước tính quãng đường/kcal.'
-    logActivity('profile_clear', selectedId.value)
+    profileMessage.value = response.delivered_to_broker
+      ? 'Đã xóa hồ sơ; thiết bị ngừng ước tính quãng đường/kcal.'
+      : 'Đã xóa trên máy chủ; thiết bị sẽ ngừng ước tính khi API kết nối lại broker.'
   } catch (exc) {
+    if (id !== selectedId.value) return
     profileError.value = true
     profileMessage.value = exc.message || 'Không xóa được hồ sơ.'
   } finally {

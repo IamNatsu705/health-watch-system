@@ -140,6 +140,17 @@ class IngestTests(unittest.TestCase):
         with self.assertRaises(RejectedMessage):
             self.save(bogus, seconds=6)
 
+    def test_retained_online_status_does_not_prove_device_is_alive(self):
+        status = self.factory.status("online")
+        save_message("status", status, self.sessions, self.now, retained=True)
+        with self.sessions() as db:
+            device = db.get(Device, "pi-watch-001")
+            self.assertFalse(device.online)
+            self.assertIsNone(device.last_seen_at)
+        save_message("status", status, self.sessions, self.now, retained=False)
+        with self.sessions() as db:
+            self.assertTrue(db.get(Device, "pi-watch-001").online)
+
     def test_stale_last_will_from_previous_boot_does_not_mark_offline(self):
         old = DeviceMessageFactory("pi-watch-001", BOOT_A)
         new = DeviceMessageFactory("pi-watch-001", BOOT_B)

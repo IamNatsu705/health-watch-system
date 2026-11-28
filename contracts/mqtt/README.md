@@ -156,8 +156,14 @@ cũ để cho phép điều khiển thiết bị offline.
 }
 ```
 
-`profile: null` là xóa hồ sơ. Retained, và API publish lại mỗi khi kết nối broker. Pi
-kiểm tra phạm vi giá trị rồi lưu `state/profile.json`.
+`profile: null` là xóa hồ sơ. Retained. Mỗi khi kết nối broker, API publish lại cấu
+hình của **mọi** thiết bị đăng ký (thiết bị không có hồ sơ nhận `null`), nên lệnh xóa
+lúc broker mất kết nối vẫn tới được Pi. Pi kiểm tra phạm vi giá trị, bỏ cấu hình có
+`updated_at` cũ hơn bản đang dùng, rồi lưu `state/profile.json`.
+
+`distance_m_session`/`calories_kcal_session` trong telemetry được Pi **cộng dồn** theo
+từng nhóm bước với hồ sơ tại thời điểm đó: chỉ tăng trong một `boot_id`, và bắt đầu
+tăng từ lúc có hồ sơ.
 
 ## 8. Độ tin cậy và bảo mật
 
