@@ -1,7 +1,9 @@
 """Đọc cảm biến, đếm bước (thuật toán + AI) trên dữ liệu thật, cảnh báo tại chỗ và gửi MQTT."""
 
 import logging
+import signal
 import time
+from contextlib import ExitStack
 
 from smbus2 import SMBus
 
@@ -21,6 +23,7 @@ from config import (
     MQTT_PUBLISH_INTERVAL_S,
     MQTT_USERNAME,
     MPU6050_ADDRESS,
+    PPG_CSV_LOG,
     SAMPLE_INTERVAL_S,
     SCREEN_INTERVAL_S,
 )
@@ -29,6 +32,7 @@ from mqtt_publisher import BrokerSettings, MqttPublisher
 from processing.fall import FallDetector
 from processing.pulse import PulseMonitor
 from processing.steps import StepEngine
+from pulse_sensor import PulseSensor
 from screen import Screen
 from sensors.max30102 import MAX30102
 from sensors.mpu6050 import ImuStream
@@ -42,62 +46,13 @@ log = logging.getLogger("health_watch.main")
 DAILY_SAVE_INTERVAL_S = 10.0
 
 
-class PulseSensor:
-    """Cô lập MAX30102: lỗi cảm biến nhịp tim không được làm dừng bộ đếm bước.
-
-    Thuật toán BPM (``processing/pulse.py``) giữ nguyên; lớp này chỉ khởi tạo lại
-    cảm biến khi lỗi và xóa giá trị cũ để không hiển thị BPM của lúc trước.
-    """
-
-    RETRY_S = 5.0
-
-    def __init__(self, bus, address: int, monitor: PulseMonitor):
-        self.bus = bus
-        self.address = address
-        self.monitor = monitor
-        self.sensor = None
-        self.error = None
-        self._next_try = 0.0
-
-    def _read(self):
-        for attempt in range(1, I2C_READ_ATTEMPTS + 1):
-            try:
-                return self.sensor.read_samples()
-            except OSError:
-                if attempt == I2C_READ_ATTEMPTS:
-                    raise
-                time.sleep(0.02)
-
-    def poll(self, now: float) -> None:
-        if self.sensor is None:
-            if now < self._next_try:
-                return
-            try:
-                self.sensor = MAX30102(self.bus, self.address)
-            except (OSError, RuntimeError) as exc:
-                self._fail(now, exc)
-                return
-            if self.error:
-                log.info("MAX30102 đã hoạt động lại")
-            self.error = None
-        try:
-            samples = self._read()
-        except OSError as exc:
-            self._fail(now, exc)
-            return
-        for red, ir in samples:
-            self.monitor.add(red, ir)
-        self.monitor.analyze(now)
-
-    def _fail(self, now: float, exc: Exception) -> None:
-        if self.error is None:
-            log.warning("MAX30102 lỗi, bộ đếm bước vẫn chạy: %s", exc)
-        self.sensor = None
-        self.error = str(exc)
-        self._next_try = now + self.RETRY_S
-        self.monitor.bpm = None
-        self.monitor.finger_present = False
-        self.monitor.ir_history.clear()
+def sleep_sensor(bus, address, register, mask, name):
+    """Dừng lấy mẫu của cảm biến khi thoát (không ngắt nguồn); lần chạy sau tự cấu hình lại."""
+    try:
+        value = bus.read_byte_data(address, register)
+        bus.write_byte_data(address, register, value | mask)
+    except OSError as exc:
+        log.warning("Không đưa được %s về chế độ ngủ: %s", name, exc)
 
 
 def main() -> None:
@@ -142,12 +97,16 @@ def main() -> None:
         session_started_at = utc_now()
         process_started = time.monotonic()
 
-        with SMBus(I2C_BUS) as bus:
+        with SMBus(I2C_BUS) as bus, ExitStack() as cleanup:
             # Gyro vào FIFO cùng gia tốc: mỗi mẫu 100 Hz có gyro đúng thời điểm (phát hiện ngã cần).
             imu = ImuStream(bus, MPU6050_ADDRESS, fifo_gyro=True)
             pulse = PulseMonitor(MAX30102.SAMPLES_PER_SECOND)
-            pulse_sensor = PulseSensor(bus, MAX30102_ADDRESS, pulse)
+            pulse_sensor = PulseSensor(bus, MAX30102_ADDRESS, pulse, csv_log=PPG_CSV_LOG)
             fall = FallDetector()
+            # Khi thoát (trước khi đóng bus): đóng CSV PPG, đưa hai cảm biến về chế độ ngủ.
+            cleanup.callback(sleep_sensor, bus, MPU6050_ADDRESS, 0x6B, 0x40, "MPU6050")
+            cleanup.callback(sleep_sensor, bus, MAX30102_ADDRESS, 0x09, 0x80, "MAX30102")
+            cleanup.callback(pulse_sensor.close)
 
             def telemetry() -> dict:
                 distance, kcal = tracker.session_estimates()
@@ -290,6 +249,8 @@ def main() -> None:
                 if started - last_screen >= SCREEN_INTERVAL_S:
                     screen.update(tracker.screen_view(imu), pulse, alert_state)
                     last_screen = started
+                    # FIFO MAX30102 ở 100 Hz chỉ đệm ~0,32 s: đọc ngay sau lúc vẽ TFT (~0,2 s).
+                    pulse_sensor.poll(time.monotonic(), analyze=False)
                 if started - last_log >= 2.0:
                     print(
                         f"imu={imu.status} fifo_overflow={imu.overflow_count} "
@@ -313,7 +274,13 @@ def main() -> None:
         alerts.close()
 
 
+def stop_on_sigterm(signum, frame):
+    # systemctl/kill gửi SIGTERM: đi qua finally như Ctrl+C (lưu số bước, gửi nốt MQTT, tắt còi).
+    raise KeyboardInterrupt
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, stop_on_sigterm)
     try:
         main()
     except KeyboardInterrupt:

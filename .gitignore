@@ -128,5 +128,6 @@ $RECYCLE.BIN/
 # Health Watch runtime state and real recordings (never commit personal sensor data)
 /health_watch/state/
 /health_watch/recordings/
+/health_watch/logs/
 /ml/cache/
 /ml/data/

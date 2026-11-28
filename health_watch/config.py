@@ -40,3 +40,8 @@ MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD", "")
 MQTT_PUBLISH_INTERVAL_S = float(os.environ.get("MQTT_PUBLISH_INTERVAL_S", "1.0"))
 MQTT_KEEPALIVE_S = int(os.environ.get("MQTT_KEEPALIVE_S", "30"))
 MQTT_OUTBOX_SIZE = int(os.environ.get("MQTT_OUTBOX_SIZE", "200"))
+
+# Ghi PPG thô (RED/IR) của MAX30102 ra logs/ppg_*.csv trong khi hệ thống chạy (nghiên cứu
+# nhịp tim, ví dụ đối chiếu nhiễu PPG với lúc đang đi bộ). Mặc định tắt vì file lớn
+# (~100 dòng/giây). Thu riêng PPG khi dừng service: dùng record_ppg.py.
+PPG_CSV_LOG = os.environ.get("PPG_CSV_LOG", "0").strip().lower() in {"1", "true", "yes", "on"}

@@ -19,6 +19,8 @@ cảnh báo từ web/app và trả trạng thái phần cứng thật qua MQTT.
 | `inference/`, `models/` | Mô hình AI "đang đi bộ hay không" (JSON) và suy luận thuần Python |
 | `user_profile.py`, `storage.py`, `step_tracker.py` | Hồ sơ người đeo, ước tính quãng đường/kcal cộng dồn, lưu bước hôm nay |
 | `record_imu.py` | Ghi dữ liệu MPU6050 thật có nhãn để kiểm định/huấn luyện AI |
+| `record_ppg.py`, `ppg_log.py` | Thu PPG thô (RED/IR) của MAX30102 ra `logs/ppg_*.csv`, `logs/fifo_*.csv` để nghiên cứu nhịp tim |
+| `pulse_sensor.py` | MAX30102 trong vòng lặp chính: cô lập lỗi, khởi tạo lại khi FIFO tràn, ghi CSV nếu bật |
 | `telemetry.py` | Tạo payload đúng hợp đồng MQTT (telemetry v2) |
 | `mqtt_publisher.py` | Kết nối nền, outbox, nhận command/config và publish state |
 | `check_*.py` | Kiểm tra I2C, GPIO/cảnh báo và MQTT |
@@ -267,6 +269,19 @@ sudo journalctl -u health-watch -n 30 --no-pager
 - Khi MPU6050 lỗi (I2C, chip tự reset, dữ liệu đứng yên), màn hình hiện
   `LỖI CẢM BIẾN` và huy hiệu `IMU!`, bộ đếm dừng, Pi tự khởi tạo lại mỗi 2 s. Lỗi
   MAX30102 không làm dừng đếm bước.
+
+## Thu dữ liệu PPG (nhịp tim)
+
+Driver `sensors/max30102.py` lấy mẫu 200 Hz, trung bình 2, nên ra 100 cặp RED/IR mỗi
+giây. Driver giám sát FIFO: khi FIFO tràn hoặc đầy, lô mẫu đó bị bỏ. FIFO chỉ đệm khoảng
+0,32 s, nên vòng lặp chính đọc lại MAX30102 ngay sau mỗi lần vẽ TFT.
+
+- **Chỉ thu PPG** (chế độ nghiên cứu, dừng service trước): `.venv/bin/python record_ppg.py`.
+  Phiên dừng ngay khi mất mẫu để `time_s` luôn liên tục. Hai cờ `ENABLE_PULSE_ANALYSIS` và
+  `ENABLE_CONSOLE_LOG` nằm ở đầu file.
+- **Thu PPG trong lúc hệ thống chạy**: đặt `PPG_CSV_LOG=1` trong `.env`. Khi FIFO tràn hoặc
+  I2C lỗi, Pi khởi tạo lại cảm biến sau 5 s và mở phiên CSV mới. Bước chân không bị ảnh hưởng.
+- `logs/` không bị script triển khai ghi đè và không đưa vào Git.
 
 ## Giới hạn cần biết
 

@@ -37,6 +37,9 @@ $rootNames = @(
     "mqtt_publisher.py",
     "user_profile.py",
     "step_tracker.py",
+    "pulse_sensor.py",
+    "ppg_log.py",
+    "record_ppg.py",
     "storage.py",
     "clock.py",
     "record_imu.py",
@@ -79,7 +82,7 @@ function Invoke-NativeChecked {
 
 Write-Host "1/3 Kết nối Pi và sao lưu source hiện tại..." -ForegroundColor Cyan
 $temporaryBackup = "/tmp/health-watch-source-$timestamp.tar.gz"
-$prepare = "set -eu; mkdir -p '$RemoteDir' '$RemoteDir/backups'; if [ -f '$RemoteDir/main.py' ]; then tar --exclude='./.venv' --exclude='./.env' --exclude='./backups' --exclude='./recordings' --exclude='*/__pycache__' -czf '$temporaryBackup' -C '$RemoteDir' .; mv '$temporaryBackup' '$RemoteDir/backups/source-$timestamp.tar.gz'; fi"
+$prepare = "set -eu; mkdir -p '$RemoteDir' '$RemoteDir/backups'; if [ -f '$RemoteDir/main.py' ]; then tar --exclude='./.venv' --exclude='./.env' --exclude='./backups' --exclude='./recordings' --exclude='./logs' --exclude='*/__pycache__' -czf '$temporaryBackup' -C '$RemoteDir' .; mv '$temporaryBackup' '$RemoteDir/backups/source-$timestamp.tar.gz'; fi"
 Invoke-NativeChecked -FilePath "ssh" -Arguments @($remoteTarget, $prepare)
 
 Write-Host "2/3 Chép đúng các file chạy trên Pi; giữ nguyên .env và .venv..." -ForegroundColor Cyan

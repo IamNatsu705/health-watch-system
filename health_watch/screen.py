@@ -48,7 +48,9 @@ def _pulse_trace(draw, pulse) -> None:
     # Không có ngón tay: chỉ hiện đường nền, tránh phóng đại nhiễu IR thành sóng tim.
     if not pulse.finger_present:
         return
-    values = list(pulse.ir_history)[-45:]
+    # ~2 giây gần nhất, rút còn tối đa ~60 điểm để vẽ (tần số MAX30102 có thể 25–100 Hz).
+    recent = list(pulse.ir_history)[-max(45, int(pulse.sample_rate * 2)):]
+    values = recent[::max(1, len(recent) // 60)]
     if len(values) < 3:
         return
     low, high = min(values), max(values)
